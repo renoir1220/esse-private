@@ -3,6 +3,15 @@ name: Esse desktop release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag matching the desktop package version
+        required: true
+        type: string
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -38,7 +47,7 @@ jobs:
       - run: npm ci
       - name: Verify independent Esse tag
         shell: bash
-        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+        run: test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
       - run: npm run typecheck
       - run: npm test
       - name: Build Windows
@@ -75,4 +84,4 @@ jobs:
       - name: Publish Esse release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "Esse $GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "Esse $RELEASE_TAG" --generate-notes
