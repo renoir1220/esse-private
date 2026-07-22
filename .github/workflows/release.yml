@@ -1,157 +1,26 @@
-name: Release
+name: Esse desktop release
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
 
 permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: plugins/codex
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugins/codex/package-lock.json
-      - run: npm ci
-      - run: npm run check
-      - name: Verify tag and release metadata
-        shell: pwsh
-        run: |
-          npm run verify:release -- $env:GITHUB_REF_NAME
-          $tagCommit = git rev-list -n 1 $env:GITHUB_REF_NAME
-          $containingBranches = @(git branch -r --contains $tagCommit | ForEach-Object { $_.Trim() })
-          $trustedBranch = $containingBranches | Where-Object { $_ -match '^origin/(main|release/.+|beta/.+|\d+\.\d+\.\d+)$' } | Select-Object -First 1
-          if (-not $trustedBranch) { throw "Release tag commit is not contained in main or a dedicated release/beta branch." }
-
   package:
-    needs: verify
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: windows-x64
+          - platform: windows
+            arch: x64
             runner: windows-latest
-          - target: macos-arm64
+          - platform: macos
+            arch: arm64
             runner: macos-15
-          - target: macos-x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        working-directory: plugins/codex
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugins/codex/package-lock.json
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        if: matrix.target == 'windows-x64'
-        with:
-          bun-version: 1.3.11
-      - run: npm ci
-      - run: npm run check
-      - run: node scripts/package-releases.mjs --target ${{ matrix.target }}
-      - name: Run Windows installation user-path E2E
-        if: matrix.target == 'windows-x64'
-        run: npm run e2e:windows
-      - name: Verify macOS safe-launcher package
-        if: startsWith(matrix.target, 'macos-')
-        shell: bash
-        working-directory: .
-        run: |
-          archive=(release/esse-${{ matrix.target }}-v*.zip)
-          test "${#archive[@]}" -eq 1
-          extracted="$(mktemp -d)"
-          /usr/bin/ditto -x -k "${archive[0]}" "$extracted"
-          launcher="$extracted/plugins/esse/bin/esse"
-          /bin/bash -n "$launcher"
-          test -f "$extracted/plugins/esse/mcp/server.cjs"
-          test -f "$extracted/plugins/esse/mcp/core.cjs"
-          if /usr/bin/file "$launcher" | grep -q 'Mach-O'; then
-            echo "macOS package must not contain an Esse-built Mach-O launcher" >&2
-            exit 1
-          fi
-          grep -q '"command": "/bin/bash"' "$extracted/plugins/esse/.mcp.json"
-          ESSE_NODE_BIN="$(command -v node)" /bin/bash "$launcher" --self-test
-          ESSE_NODE_BIN="$(command -v node)" /bin/bash "$launcher" --core --self-test
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: esse-${{ matrix.target }}
-          path: release/esse-${{ matrix.target }}-v*.zip
-          if-no-files-found: error
-          retention-days: 7
-
-  package-agent-sidecar:
-    needs: verify
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: sidecars/agent
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: sidecars/agent/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run make
-      - run: npm run verify:icons:windows
-      - run: npm run verify:package:windows
-      - name: Verify Agent Sidecar Authenticode signatures
-        if: github.ref_name != 'v0.3.0-alpha.2' && github.ref_name != 'v0.3.0'
-        run: npm run verify:signatures
-      - name: Confirm explicitly unsigned release exception
-        if: github.ref_name == 'v0.3.0-alpha.2' || github.ref_name == 'v0.3.0'
-        shell: pwsh
-        run: |
-          $targets = @(
-            '.\out\Esse-win32-x64\esse.exe',
-            '.\out\make\squirrel.windows\x64\Esse-Setup.exe'
-          )
-          foreach ($target in $targets) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $target
-            if ($signature.Status -ne 'NotSigned') { throw "Expected the explicitly unsigned artifact ${target}, got $($signature.Status)." }
-          }
-          Write-Warning "$env:GITHUB_REF_NAME is an explicitly unsigned release and may trigger Windows publisher or reputation warnings."
-      - name: Stage Esse Agent Sidecar installer
-        run: npm run stage:release -- windows x64
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: esse-agent-sidecar-windows-x64
-          path: release/esse-agent-sidecar-windows-x64-v*.exe
-          if-no-files-found: error
-          retention-days: 7
-
-  package-agent-sidecar-macos:
-    needs: verify
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-15
-          - arch: x64
+          - platform: macos
+            arch: x64
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     defaults:
@@ -167,117 +36,43 @@ jobs:
           cache: npm
           cache-dependency-path: sidecars/agent/package-lock.json
       - run: npm ci
-      - name: Configure Developer ID signing and notarization
+      - name: Verify independent Esse tag
         shell: bash
-        env:
-          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_NOTARY_API_KEY_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_BASE64 }}
-          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
-          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-        run: |
-          test -n "$MACOS_CERTIFICATE_P12_BASE64"
-          test -n "$MACOS_CERTIFICATE_PASSWORD"
-          test -n "$MACOS_NOTARY_API_KEY_BASE64"
-          test -n "$MACOS_NOTARY_API_KEY_ID"
-          test -n "$MACOS_NOTARY_API_ISSUER_ID"
-          test -n "$MACOS_SIGN_IDENTITY"
-          certificate="$RUNNER_TEMP/esse-developer-id.p12"
-          notary_key="$RUNNER_TEMP/AuthKey_${{ secrets.MACOS_NOTARY_API_KEY_ID }}.p8"
-          keychain="$RUNNER_TEMP/esse-signing.keychain-db"
-          keychain_password="$(uuidgen)"
-          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | /usr/bin/base64 -D > "$certificate"
-          printf '%s' "$MACOS_NOTARY_API_KEY_BASE64" | /usr/bin/base64 -D > "$notary_key"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
-          security list-keychains -d user -s "$keychain"
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
       - run: npm run typecheck
       - run: npm test
-      - name: Build signed and notarized macOS Agent Sidecar
-        env:
-          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-          MACOS_NOTARY_API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.MACOS_NOTARY_API_KEY_ID }}.p8
-          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
-          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+      - name: Build Windows
+        if: matrix.platform == 'windows'
+        run: npm run make
+      - name: Verify Windows
+        if: matrix.platform == 'windows'
+        run: npm run verify:package:windows
+      - name: Build macOS
+        if: matrix.platform == 'macos'
         run: npm run make:macos:${{ matrix.arch }}
-      - run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }} --require-signed
-      - run: npm run stage:release -- macos ${{ matrix.arch }}
+      - name: Verify macOS
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
+      - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: esse-agent-sidecar-macos-${{ matrix.arch }}
-          path: release/esse-agent-sidecar-macos-${{ matrix.arch }}-v*.dmg
+          name: esse-${{ matrix.platform }}-${{ matrix.arch }}
+          path: release/esse-${{ matrix.platform }}-${{ matrix.arch }}-v*
           if-no-files-found: error
-          retention-days: 7
 
   publish:
-    needs: [package, package-agent-sidecar, package-agent-sidecar-macos]
-    runs-on: windows-latest
+    needs: package
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: esse-*
           path: release
           merge-multiple: true
-      - name: Create and verify release metadata
-        shell: pwsh
-        run: |
-          node .\plugins\codex\scripts\create-release-metadata.mjs
-          $metadata = Get-Content -Raw -Encoding UTF8 .\release\latest.json | ConvertFrom-Json
-          if ($metadata.tag -ne $env:GITHUB_REF_NAME) { throw "latest.json tag does not match Git tag" }
-          foreach ($prefix in @("windowsX64", "macosArm64", "macosX64")) {
-            $asset = $metadata."${prefix}Asset"
-            $expected = $metadata."${prefix}Sha256"
-            $actual = (Get-FileHash -Algorithm SHA256 (Join-Path .\release $asset)).Hash.ToLowerInvariant()
-            if ($actual -ne $expected) { throw "Checksum mismatch for $asset" }
-          }
-          $sidecar = Get-Content -Raw -Encoding UTF8 .\release\sidecar-latest.json | ConvertFrom-Json
-          if ($sidecar.tag -ne $env:GITHUB_REF_NAME) { throw "sidecar-latest.json tag does not match Git tag" }
-          foreach ($prefix in @("windowsX64", "macosArm64", "macosX64")) {
-            $asset = $sidecar."${prefix}Asset"
-            $expected = $sidecar."${prefix}Sha256"
-            $actual = (Get-FileHash -Algorithm SHA256 (Join-Path .\release $asset)).Hash.ToLowerInvariant()
-            if ($actual -ne $expected) { throw "Checksum mismatch for $asset" }
-          }
-      - name: Publish GitHub Release
-        shell: pwsh
+      - name: Publish Esse release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          $tag = $env:GITHUB_REF_NAME
-          $assets = Get-ChildItem -LiteralPath .\release -File | Select-Object -ExpandProperty FullName
-          $releaseNotes = Get-Content -Raw -Encoding UTF8 .\.github\release-notes-prefix.md
-          $lastFailure = ""
-          foreach ($attempt in 1..5) {
-            $viewOutput = (& gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" 2>&1 | Out-String)
-            $viewExit = $LASTEXITCODE
-            if ($viewExit -eq 0) {
-              $publishOutput = (& gh release upload $tag @assets --clobber 2>&1 | Out-String)
-              $publishExit = $LASTEXITCODE
-            } elseif ($viewOutput -match 'HTTP 404|Not Found') {
-              if ($tag -match "-") {
-                $publishOutput = (& gh release create $tag @assets --verify-tag --prerelease --title "Esse $tag" --notes $releaseNotes 2>&1 | Out-String)
-              } else {
-                $publishOutput = (& gh release create $tag @assets --verify-tag --title "Esse $tag" --notes $releaseNotes 2>&1 | Out-String)
-              }
-              $publishExit = $LASTEXITCODE
-            } else {
-              $publishOutput = $viewOutput
-              $publishExit = $viewExit
-            }
-            if ($publishExit -eq 0) { exit 0 }
-            $lastFailure = $publishOutput.Trim()
-            if ($attempt -lt 5) { Start-Sleep -Seconds ([Math]::Pow(2, $attempt)) }
-          }
-          throw "GitHub Release publish failed after 5 attempts: $lastFailure"
+        run: gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "Esse $GITHUB_REF_NAME" --generate-notes

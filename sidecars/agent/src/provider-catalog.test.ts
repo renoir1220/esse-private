@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createTuziProviderDraft, TUZI_PROVIDER_PRESETS } from './provider-catalog';
+import { createEsseManagedProviderInput, createTuziProviderDraft, DEFAULT_ESSE_CONCURRENCY, TUZI_PROVIDER_PRESETS } from './provider-catalog';
 
 describe('Tuzi Provider catalog', () => {
   it('keeps the Plugin-compatible credential groups and model presets independent', () => {
@@ -15,5 +15,7 @@ describe('Tuzi Provider catalog', () => {
     draft.offerings[0].displayName = 'changed';
     expect(TUZI_PROVIDER_PRESETS[0].models[0].displayName).toBe('GPT-Image 2');
     expect(draft.apiKey).toBe('');
+    expect(createEsseManagedProviderInput().concurrency).toBe(DEFAULT_ESSE_CONCURRENCY);
+    expect(DEFAULT_ESSE_CONCURRENCY).toBe(10);
   });
 });

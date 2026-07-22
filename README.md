@@ -1,5 +1,7 @@
 # Esse
 
+> Esse 的私有下游仓库。公开社区上游与私有代码边界、独立版本规则见 [`PRIVATE-DOWNSTREAM.md`](PRIVATE-DOWNSTREAM.md)。Esse 桌面应用从 `1.0.0` 起版，不跟随 Esse Community 版本号。
+
 **语言：简体中文 | [English](README.en.md)**
 
 Esse 是由 Agent 指挥的本地图片工作台。用户只需要说“用 Esse 生成图片”；无论安装的是 Codex Plugin 还是面向 WorkBuddy 等 Agent 的本地客户端，产品名称始终是 Esse。
@@ -25,11 +27,11 @@ Codex 应先阅读 [`INSTALL.md`](INSTALL.md)，再识别平台、下载 Release
 
 ## 安装到 WorkBuddy 等 Agent
 
-从 [GitHub Releases](https://github.com/renoir1220/esse/releases) 下载与当前平台匹配的 `esse-agent-sidecar-windows-x64-*.exe` 或 `esse-agent-sidecar-macos-*-*.dmg`，核对 `sidecar-latest.json` 或 `checksums.txt` 后安装并打开 Esse。在 Esse 的设置页：
+从本仓库的私有 Releases 下载与当前平台匹配的 `esse-windows-x64-*.exe` 或 `esse-macos-*-*.dmg`，校验后安装并打开 Esse。在 Esse 的设置页：
 
-1. 选择内置的兔子 Provider 预设或添加 OpenAI 兼容 Provider。
-2. 在 Esse 内填写 API Key、测试连接并保存默认模型。
-3. 复制 MCP 配置并粘贴到 Agent 的用户级 HTTP MCP 配置中。
+1. 在首次引导中填写 Esse Key，并等待连接测试通过。
+2. 选择默认模型；高级用户也可以在“高级配置”中添加兼容 Provider。
+3. 复制 Agent 配置提示词，粘贴到 WorkBuddy 或其他 Agent 后直接发送。
 
 之后直接对 Agent 说“用 Esse 生成图片”。Agent 把任务交给 Esse 后应立即返回；除非用户明确要求查看或导出结果，否则不应把产物复制回聊天工作区，也不应反复播报价格和进度。
 
@@ -75,4 +77,4 @@ npm test
 npm run make
 ```
 
-MIT License，见 [`LICENSE`](LICENSE)。
+公开上游文件继续适用 [`LICENSE`](LICENSE) 中的 MIT License；私有专有改动适用 [`LICENSE-PROPRIETARY`](LICENSE-PROPRIETARY)，不得公开分发。

@@ -1,6 +1,10 @@
-import type { AdapterId, OfferingConfig, ProviderDraft } from './types';
+import type { AdapterId, OfferingConfig, ProviderDraft, ProviderProfile, SaveProviderInput } from './types';
 
 export type TuziProviderPresetId = 'tuzi-default' | 'tuzi-microsoft' | 'tuzi-codex';
+
+export const ESSE_MANAGED_PROVIDER_ID = 'esse-managed';
+export const ESSE_MANAGED_BASE_URL = 'https://api.tu-zi.com';
+export const DEFAULT_ESSE_CONCURRENCY = 10;
 
 export interface TuziModelPreset extends OfferingConfig {
   catalogId: string;
@@ -83,6 +87,30 @@ export function createTuziProviderDraft(id: TuziProviderPresetId): ProviderDraft
     hasApiKey: false,
     offerings: defaultModels.map(offeringFromTuziModel),
   };
+}
+
+export function createEsseManagedProviderInput(apiKey?: string): SaveProviderInput {
+  const draft = createTuziProviderDraft('tuzi-default');
+  return {
+    id: ESSE_MANAGED_PROVIDER_ID,
+    displayName: 'Esse',
+    tierName: '内置',
+    baseUrl: draft.baseUrl,
+    adapterId: draft.adapterId,
+    concurrency: DEFAULT_ESSE_CONCURRENCY,
+    ...(apiKey ? { apiKey } : {}),
+    offerings: draft.offerings,
+  };
+}
+
+export function isEsseManagedProvider(profile: Pick<ProviderProfile, 'id' | 'displayName' | 'tierName' | 'baseUrl' | 'adapterId'>): boolean {
+  if (profile.id === ESSE_MANAGED_PROVIDER_ID) return true;
+  const baseUrl = normalizeBaseUrl(profile.baseUrl);
+  if (baseUrl !== normalizeBaseUrl(ESSE_MANAGED_BASE_URL) || profile.displayName.trim() !== '兔子') return false;
+  return TUZI_PROVIDER_PRESETS.some((preset) => (
+    profile.tierName.trim().toLocaleLowerCase() === preset.tierName.toLocaleLowerCase()
+    && profile.adapterId === preset.adapterId
+  ));
 }
 
 export function createCustomProviderDraft(): ProviderDraft {

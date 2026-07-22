@@ -5,6 +5,9 @@ const bridge: EsseDesktopBridge = {
   platform: process.platform,
   getState: () => ipcRenderer.invoke('state:get'),
   refresh: () => ipcRenderer.invoke('state:get'),
+  connectEsseKey: (apiKey: string) => ipcRenderer.invoke('esse-key:connect', apiKey),
+  setEsseConcurrency: (concurrency: number) => ipcRenderer.invoke('esse-settings:set-concurrency', concurrency),
+  dismissOnboarding: () => ipcRenderer.invoke('onboarding:dismiss'),
   saveProvider: (input: SaveProviderInput) => ipcRenderer.invoke('providers:save', input),
   deleteProvider: (id: string) => ipcRenderer.invoke('providers:delete', id),
   testProvider: (input) => ipcRenderer.invoke('providers:test', input),
@@ -21,7 +24,7 @@ const bridge: EsseDesktopBridge = {
   copyImage: (id: string) => ipcRenderer.invoke('images:copy', id),
   saveImage: (id: string) => ipcRenderer.invoke('images:save', id),
   openBatchFolder: (batchId: string) => ipcRenderer.invoke('batches:open-folder', batchId),
-  copyWorkBuddyConfig: () => ipcRenderer.invoke('mcp:copy-workbuddy-config'),
+  copyAgentSetupPrompt: () => ipcRenderer.invoke('mcp:copy-agent-setup'),
   onStateChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, state: Awaited<ReturnType<EsseDesktopBridge['getState']>>) => callback(state);
     ipcRenderer.on('state:changed', listener);

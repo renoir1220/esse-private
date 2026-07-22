@@ -3,6 +3,7 @@ import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import started from 'electron-squirrel-startup';
+import { buildAgentSetupPrompt } from './agent-setup-prompt';
 import { EsseApiClient } from './api-client';
 import { BatchManager } from './batch-manager';
 import { BatchStore } from './batch-store';
@@ -12,18 +13,24 @@ import { configureWorkBuddyForDevelopment } from './dev-bootstrap';
 import { ImageStore } from './image-store';
 import { McpPairingStore } from './mcp-pairing-store';
 import { DEFAULT_MCP_PORT, startDesktopMcpServer, type RunningDesktopMcpServer } from './mcp-server';
+import { PENDING_TASK_HOVER_DELAY_MS } from './pending-task-peek';
 import { ProviderSettingsStore } from './provider-settings';
+import { DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
 import { WORKBUDDY_AGENT_OFFERING, type DesktopState, type ModifyBatchInput, type SaveProviderInput } from './types';
 import { desktopWindowChrome, shouldRemoveWindowMenu } from './window-chrome';
 import { resolveSidecarUserDataPath, shouldQuitWhenAllWindowsClose } from './platform';
+import product from '../product.json';
 
 const smokeMode = process.env.ESSE_SMOKE_TEST === '1';
 const qaCapturePath = process.env.ESSE_QA_CAPTURE_PATH;
 const qaFixture = process.env.ESSE_QA_FIXTURE;
+const qaTab = process.env.ESSE_QA_TAB;
 const qaViewport = parseQaViewport(process.env.ESSE_QA_VIEWPORT);
+const qaCaptureClipHeight = parseQaClipHeight(process.env.ESSE_QA_CAPTURE_CLIP_HEIGHT);
 const qaUserDataPath = process.env.ESSE_QA_USER_DATA_PATH;
+const qaHoverPending = process.env.ESSE_QA_HOVER_PENDING === '1';
 
-app.setName('Esse');
+app.setName(product.displayName);
 if (qaUserDataPath) {
   app.setPath('userData', path.resolve(qaUserDataPath));
 } else {
@@ -92,7 +99,7 @@ function createWindow(): void {
     height: qaViewport?.height ?? 860,
     minHeight: qaViewport ? 640 : 640,
     show: !smokeMode && !qaCapturePath,
-    title: 'Esse',
+    title: product.displayName,
     icon: resolveRuntimeIconPath(),
     backgroundColor: '#ffffff',
     ...desktopWindowChrome(process.platform),
@@ -126,12 +133,27 @@ function createWindow(): void {
         try {
           let stableFrames = 0;
           for (let attempt = 0; attempt < 40; attempt += 1) {
-            const ready = await mainWindow.webContents.executeJavaScript("Boolean(document.querySelector('.connect-screen') || (document.querySelector('.app-shell') && Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0)))");
+            const ready = await mainWindow.webContents.executeJavaScript("Boolean(document.querySelector('.onboarding-screen') || (document.querySelector('.app-shell') && Array.from(document.images).every((image) => image.complete && image.naturalWidth > 0)))");
             stableFrames = ready ? stableFrames + 1 : 0;
             if (stableFrames >= 4) break;
             await new Promise((resolve) => setTimeout(resolve, 250));
           }
           await new Promise((resolve) => setTimeout(resolve, 900));
+          if (qaTab === 'settings') {
+            await mainWindow.webContents.executeJavaScript("document.querySelector('.header-actions button:last-child')?.click()");
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+          if (qaHoverPending) {
+            const hoverPoint = await mainWindow.webContents.executeJavaScript(`(() => {
+              const target = document.querySelector('[data-pending-task="true"]');
+              if (!target) return undefined;
+              const rect = target.getBoundingClientRect();
+              return { x: Math.round(rect.left + rect.width / 2), y: Math.round(rect.top + Math.min(rect.height / 2, 90)) };
+            })()`);
+            if (!hoverPoint) throw new Error('Pending-task hover target was not found.');
+            mainWindow.webContents.sendInputEvent({ type: 'mouseMove', x: hoverPoint.x, y: hoverPoint.y });
+            await new Promise((resolve) => setTimeout(resolve, PENDING_TASK_HOVER_DELAY_MS + 180));
+          }
           if (process.env.ESSE_QA_SKIP_INTERACTIONS !== '1') {
             const overlayResult = await mainWindow.webContents.executeJavaScript(`(async () => {
             const settle = () => new Promise((resolve) => setTimeout(resolve, 60));
@@ -166,11 +188,13 @@ function createWindow(): void {
             if (!overlayResult.batchPicker || !overlayResult.headerMenu || !overlayResult.lightboxMask || !overlayResult.finalOverlaysClosed) throw new Error(`Overlay dismissal assertion failed: ${JSON.stringify(overlayResult)}`);
             console.log(`ESSE_QA_OVERLAYS=${JSON.stringify(overlayResult)}`);
           }
-          const renderedState = await mainWindow.webContents.executeJavaScript("JSON.stringify({ bridge: typeof window.esse, shell: Boolean(document.querySelector('.app-shell')), connect: Boolean(document.querySelector('.connect-screen')), splash: Boolean(document.querySelector('.splash')), images: Array.from(document.images).map((image) => ({ complete: image.complete, width: image.naturalWidth })) })");
+          const renderedState = await mainWindow.webContents.executeJavaScript("JSON.stringify({ bridge: typeof window.esse, shell: Boolean(document.querySelector('.app-shell')), connect: Boolean(document.querySelector('.connect-screen')), splash: Boolean(document.querySelector('.splash')), pendingPeek: Boolean(document.querySelector('.pending-task-peek')), images: Array.from(document.images).map((image) => ({ complete: image.complete, width: image.naturalWidth })), thumbnails: Array.from(document.querySelectorAll('.image-card-stage')).map((element) => { const rect = element.getBoundingClientRect(); return { width: Math.round(rect.width), height: Math.round(rect.height) }; }) })");
           console.log(`ESSE_QA_STATE=${renderedState}`);
           mainWindow.webContents.invalidate();
           await new Promise((resolve) => setTimeout(resolve, 250));
-          const image = await mainWindow.webContents.capturePage();
+          const image = qaCaptureClipHeight && qaViewport
+            ? await mainWindow.webContents.capturePage({ x: 0, y: 0, width: qaViewport.width, height: qaCaptureClipHeight })
+            : await mainWindow.webContents.capturePage();
           await mkdir(path.dirname(qaCapturePath), { recursive: true });
           await writeFile(qaCapturePath, image.toPNG());
           console.log(`ESSE_QA_CAPTURE=${qaCapturePath}`);
@@ -193,6 +217,28 @@ function createWindow(): void {
 
 function registerIpc(): void {
   ipcMain.handle('state:get', () => loadState());
+  ipcMain.handle('esse-key:connect', async (_event, apiKey: unknown) => {
+    if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('请输入 Esse Key。');
+    await providerSettings.testEsseKey(apiKey);
+    await providerSettings.saveEsseKey(apiKey);
+    const currentDefault = await desktopSettings.getDefaultOfferingId();
+    if (!currentDefault) {
+      const managedDefault = (await batchManager.offerings()).find((offering) => offering.providerType === 'esse-managed' && offering.configured);
+      if (managedDefault) await desktopSettings.setDefaultOfferingId(managedDefault.id);
+    }
+    batchManager.resume();
+    return loadState();
+  });
+  ipcMain.handle('esse-settings:set-concurrency', async (_event, concurrency: unknown) => {
+    if (typeof concurrency !== 'number') throw new Error('并发数必须是 1 到 12 之间的整数。');
+    await providerSettings.saveEsseConcurrency(concurrency);
+    batchManager.resume();
+    return loadState();
+  });
+  ipcMain.handle('onboarding:dismiss', async () => {
+    await desktopSettings.setOnboardingDismissed(true);
+    return loadState();
+  });
   ipcMain.handle('providers:save', async (_event, input: SaveProviderInput) => {
     const saved = await providerSettings.saveProvider(input);
     const currentDefault = await desktopSettings.getDefaultOfferingId();
@@ -296,15 +342,15 @@ function registerIpc(): void {
     const error = await shell.openPath(batchFolder);
     if (error) throw new Error(error);
   });
-  ipcMain.handle('mcp:copy-workbuddy-config', async () => {
+  ipcMain.handle('mcp:copy-agent-setup', async () => {
     if (!mcpServer) throw new Error(mcpError || 'Esse MCP is unavailable.');
     const pairingToken = await mcpPairingStore.getOrCreate();
-    clipboard.writeText(JSON.stringify({
+    clipboard.writeText(buildAgentSetupPrompt({
       type: 'http',
       url: mcpServer.endpoint,
       headers: { Authorization: `Bearer ${pairingToken}` },
       description: 'Esse local image generation',
-    }, null, 2));
+    }));
   });
   ipcMain.on('smoke:ready', (_event, details: unknown) => {
     if (!smokeMode || smokeReported) return;
@@ -335,13 +381,21 @@ async function loadState(): Promise<DesktopState> {
     ...(mcpError ? { error: mcpError } : {}),
   };
   try {
-    const [providers, offerings] = await Promise.all([providerSettings.listProfiles(), batchManager.offerings()]);
+    const [providers, offerings, esseKeyConfigured, esseConcurrency, onboardingDismissed] = await Promise.all([
+      providerSettings.listCustomProfiles(),
+      batchManager.offerings(),
+      providerSettings.hasEsseKey(),
+      providerSettings.getEsseConcurrency(),
+      desktopSettings.getOnboardingDismissed(),
+    ]);
     const configuredDefault = await desktopSettings.getDefaultOfferingId();
     const defaultOfferingId = offerings.some((offering) => offering.id === configuredDefault && offering.configured)
       ? configuredDefault
       : offerings.filter((offering) => offering.configured).length === 1 ? offerings.find((offering) => offering.configured)?.id : undefined;
     return applyQaFixture({
-      configured: true,
+      configured: esseKeyConfigured || providers.some((profile) => profile.hasApiKey),
+      esseService: { configured: esseKeyConfigured, concurrency: esseConcurrency },
+      onboarding: { dismissed: onboardingDismissed },
       providers,
       offerings,
       defaultOfferingId,
@@ -354,7 +408,9 @@ async function loadState(): Promise<DesktopState> {
     });
   } catch (error) {
     return {
-      configured: true,
+      configured: false,
+      esseService: { configured: false, concurrency: DEFAULT_ESSE_CONCURRENCY },
+      onboarding: { dismissed: true },
       providers: [],
       offerings: [],
       images,
@@ -419,16 +475,21 @@ function requiredId(value: unknown, kind: string): string {
 }
 
 function applyQaFixture(state: DesktopState): DesktopState {
-  if (!qaCapturePath || qaFixture !== 'three-images') return state;
+  if (!qaCapturePath || !['three-images', 'three-failures', 'three-running'].includes(qaFixture || '')) return state;
   const baseImage = state.images[0];
   const baseBatch = state.batches[0];
   if (!baseImage || !baseBatch || !baseBatch.jobs[0]) return state;
   const imageIds = [baseImage.id, '00000000-0000-4000-8000-000000000002', '00000000-0000-4000-8000-000000000003'];
+  const failureFixture = qaFixture === 'three-failures';
+  const runningFixture = qaFixture === 'three-running';
+  const prompts = failureFixture || runningFixture
+    ? ['阳光草地上端坐的金毛犬，写实摄影', '雪地小径上吐着舌头的柴犬，写实摄影', '青草山坡上警觉站立的德国牧羊犬，写实摄影']
+    : ['巨型黑色长角甲虫的微距摄影', '金色甲虫在叶片上的微距摄影', '蓝色甲虫在森林中的微距摄影'];
   const images = imageIds.map((id, index) => ({
     ...baseImage,
     id,
     fileName: `qa-image-${index + 1}.png`,
-    prompt: ['巨型黑色长角甲虫的微距摄影', '金色甲虫在叶片上的微距摄影', '蓝色甲虫在森林中的微距摄影'][index],
+    prompt: prompts[index],
   }));
   const now = new Date().toISOString();
   const jobs = imageIds.map((outputImageId, index) => ({
@@ -437,27 +498,36 @@ function applyQaFixture(state: DesktopState): DesktopState {
     index,
     name: `图${index + 1}`,
     prompt: images[index].prompt,
-    outputImageId,
-    status: 'succeeded' as const,
-    progress: 100,
-    chargeState: 'charged' as const,
+    outputImageId: failureFixture || runningFixture ? undefined : outputImageId,
+    status: failureFixture ? 'failed' as const : runningFixture ? 'running' as const : 'succeeded' as const,
+    progress: runningFixture ? 20 : 100,
+    chargeState: failureFixture && index === 0 ? 'unknown' as const : failureFixture ? 'not_charged' as const : 'charged' as const,
+    retryable: failureFixture,
+    error: failureFixture ? '图片服务暂时不可用' : undefined,
+    callHistory: failureFixture ? [] : structuredClone(baseBatch.jobs[0].callHistory),
     backups: [],
-    referenceImageIds: [],
+    referenceImageIds: runningFixture ? index === 0 ? imageIds.slice(0, 2) : index === 1 ? [imageIds[2]] : [] : [],
   }));
   const batch = {
     ...baseBatch,
-    title: '三种不同的甲虫',
+    title: failureFixture || runningFixture ? '三种不同的狗' : '三种不同的甲虫',
     jobs,
-    status: 'completed' as const,
+    status: failureFixture ? 'failed' as const : runningFixture ? 'running' as const : 'completed' as const,
     total: 3,
     queued: 0,
-    running: 0,
-    succeeded: 3,
-    failed: 0,
+    running: runningFixture ? 3 : 0,
+    succeeded: failureFixture || runningFixture ? 0 : 3,
+    failed: failureFixture ? 3 : 0,
     canceled: 0,
     updatedAt: now,
   };
-  return { ...state, images, batches: [batch], activeBatchId: batch.id };
+  return {
+    ...state,
+    onboarding: { dismissed: true },
+    images,
+    batches: [batch],
+    activeBatchId: batch.id,
+  };
 }
 
 function parseQaViewport(value: string | undefined): { width: number; height: number } | undefined {
@@ -465,6 +535,12 @@ function parseQaViewport(value: string | undefined): { width: number; height: nu
   const match = value.match(/^(\d{3,4})x(\d{3,4})$/);
   if (!match) return undefined;
   return { width: Number(match[1]), height: Number(match[2]) };
+}
+
+function parseQaClipHeight(value: string | undefined): number | undefined {
+  if (!value || app.isPackaged) return undefined;
+  const height = Number(value);
+  return Number.isInteger(height) && height >= 200 && height <= 2000 ? height : undefined;
 }
 
 function resolveRuntimeIconPath(): string {

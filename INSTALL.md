@@ -86,9 +86,9 @@ Open the verified `.dmg`, drag `Esse.app` into Applications, and open Esse norma
 
 After installation, the user opens Esse and completes setup inside its settings page:
 
-1. Choose a built-in Tuzi preset or add an OpenAI-compatible Provider.
-2. Paste the API Key inside Esse, test it, and save a default image model.
-3. Copy the MCP server configuration from Esse into the Agent's user-level HTTP MCP settings.
+1. Paste the Esse Key into the first-run guide and wait for the connection test to pass.
+2. Save a default image model. Advanced users may add a compatible Provider under Advanced settings.
+3. Copy the Agent setup prompt from Esse, paste it into the Agent, and send it so the Agent can preserve existing MCP entries and add Esse.
 4. Start a new Agent task and say `用 Esse 生成图片`.
 
 Never request the API Key in chat or put it in an Agent configuration file. The MCP configuration contains only a local loopback endpoint and per-install pairing token. Once Esse accepts Provider work in the background, the Agent should return control immediately and should not poll or copy output back unless the user explicitly asks.

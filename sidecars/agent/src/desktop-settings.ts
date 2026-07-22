@@ -4,6 +4,7 @@ import path from 'node:path';
 interface DesktopSettingsDocument {
   version: 1;
   defaultOfferingId?: string;
+  onboardingDismissed?: boolean;
   updatedAt: string;
 }
 
@@ -16,16 +17,32 @@ export class DesktopSettingsStore {
     return (await this.read()).defaultOfferingId;
   }
 
+  async getOnboardingDismissed(): Promise<boolean> {
+    return (await this.read()).onboardingDismissed === true;
+  }
+
   async setDefaultOfferingId(id: string): Promise<void> {
     const clean = id.trim();
     if (!clean || clean.length > 200) throw new Error('Invalid default model.');
+    await this.update((document) => {
+      document.defaultOfferingId = clean;
+    });
+  }
+
+  async setOnboardingDismissed(dismissed: boolean): Promise<void> {
+    await this.update((document) => {
+      document.onboardingDismissed = dismissed;
+    });
+  }
+
+  private async update(mutator: (document: DesktopSettingsDocument) => void): Promise<void> {
     const task = this.writeQueue.then(async () => {
       const document = await this.read();
-      document.defaultOfferingId = clean;
+      mutator(document);
       document.updatedAt = new Date().toISOString();
       await mkdir(path.dirname(this.filePath), { recursive: true });
       const temporary = `${this.filePath}.${process.pid}.tmp`;
-      await writeFile(temporary, JSON.stringify(document, null, 2), { encoding: 'utf8', mode: 0o600 });
+      await writeFile(temporary, `${JSON.stringify(document, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
       await rename(temporary, this.filePath);
     });
     this.writeQueue = task.then(() => undefined, () => undefined);

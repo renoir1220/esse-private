@@ -7,7 +7,7 @@ Esse currently has two independent implementations. They intentionally do not sh
 The Agent Sidecar snapshot preserves the following Plugin behavior semantically:
 
 - durable batches with independently queued jobs and background Provider execution;
-- local Provider profiles, Tuzi presets, per-offering model and price metadata, configurable concurrency, and OS-protected API keys;
+- local managed connection and advanced Provider profiles, per-offering model and price metadata, configurable concurrency, and OS-protected API keys;
 - original-file persistence, history versions, selection, modification, deletion, previews, zoom, and overlay dismissal;
 - real reference-image transfer by absolute path or registered Esse image ID;
 - MCP submission that returns after durable acceptance, without routine polling, price narration, or automatic result retrieval;
@@ -15,7 +15,7 @@ The Agent Sidecar snapshot preserves the following Plugin behavior semantically:
 - Provider-returned remote image URLs use China-first trusted DNS resolution, private-network rejection, redirect revalidation, and pinned public-address downloads;
 - one user-facing product name: Esse.
 
-The initial import deliberately excludes the private commercial server, user accounts, balances, channel administration, hosted billing, and all credentials. It also leaves the Plugin and Sidecar stores isolated.
+The initial import deliberately excludes the private service, user accounts, balances, channel administration, hosted billing, and all credentials. It also leaves the Plugin and Sidecar stores isolated.
 
 ## 2026-07-21 — Agent handoff hardening
 
@@ -43,6 +43,21 @@ The initial import deliberately excludes the private commercial server, user acc
 - The macOS release pipeline builds architecture-specific DMGs, checks bundle IDs, Mach-O architecture, bundled Esse icon resources, and packaged-app startup, and requires Developer ID signing plus Apple notarization for a published Release.
 - The Windows Squirrel application ID no longer owns `%LOCALAPPDATA%\esse`, preventing the installer from deleting Codex Plugin history. The installer root, Plugin data, and Sidecar data now have three distinct identities.
 - Windows executable, installer, runtime title bar, macOS app bundle, and DMG all use the Esse application icon rather than Electron defaults.
+
+## 2026-07-22 — managed connection onboarding
+
+- The Agent Sidecar ordinary setup path accepts one Esse Key, tests it before secure storage, and keeps managed connection details out of the renderer and MCP offering summaries.
+- First-run onboarding guides a new user from Key validation to a paste-and-send Agent setup prompt; it can be dismissed without exposing Advanced settings.
+- Custom Provider URLs, adapters, models, and concurrency remain available under Advanced settings. Existing managed preset credentials and batch history are recognized without deleting or rewriting user data.
+- Gallery thumbnails keep their wide-layout width as the window narrows; responsive layout now reduces the column count instead of enlarging cards.
+- The Codex Plugin has not yet adopted this new onboarding hierarchy; port it semantically before claiming setup-flow parity.
+
+## 2026-07-22 — language, retry, and managed execution controls
+
+- Agent-facing Sidecar and Codex skills now require image prompts to follow the user's current language, defaulting to Simplified Chinese when the language is unclear.
+- Batches with failures expose one title-level action that retries every retryable failed job together; clicking it is the explicit approval for any included unknown-charge retry.
+- Ordinary Esse settings expose managed concurrency alongside the default model. New and legacy-default managed connections use 10 concurrent tasks unless the user changes it.
+- Model selectors no longer display currency amounts. Stored price metadata remains available internally until the product moves to points.
 
 ## Deferred
 

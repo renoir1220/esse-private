@@ -806,12 +806,14 @@ function normalizeBatch(batch: BatchRecord): BatchRecord {
     job.referenceImageIds ??= [];
     job.backups ??= [];
     job.callHistory ??= [];
+    if (job.error) job.error = sanitizeManagedChannelText(job.error);
     if (job.offering) job.offering = normalizeOffering(job.offering);
     for (const backup of job.backups) {
       if (backup.offering) backup.offering = normalizeOffering(backup.offering);
     }
     for (const call of job.callHistory) {
       if (call.offering) call.offering = normalizeOffering(call.offering);
+      if (call.error) call.error = sanitizeManagedChannelText(call.error);
     }
   }
   return batch;
@@ -820,17 +822,29 @@ function normalizeBatch(batch: BatchRecord): BatchRecord {
 function normalizeOffering(offering: OfferingSummary): OfferingSummary {
   const priceMicros = Number.isFinite(offering.priceMicros) ? offering.priceMicros : 0;
   const currency = offering.currency || 'CNY';
+  const legacyManaged = /^(兔子|tu-?zi)$/i.test(offering.providerName?.trim() || '');
   return {
     ...offering,
-    tierName: offering.tierName || '旧版配置',
+    providerName: legacyManaged ? 'Esse' : offering.providerName,
+    providerType: legacyManaged ? 'esse-managed' : offering.providerType,
+    tierName: legacyManaged ? '内置' : offering.tierName || '旧版配置',
     concurrency: Number.isInteger(offering.concurrency) && offering.concurrency > 0 ? offering.concurrency : 3,
     priceMicros,
     currency,
-    price: offering.price ?? (offering.providerType === 'agent-generation'
+    price: offering.price ? {
+      ...offering.price,
+      ...(legacyManaged ? { note: 'Esse 内置模型参考价' } : {}),
+    } : (offering.providerType === 'agent-generation'
       ? { mode: 'model_quota', currency: 'MODEL' }
       : { mode: 'per_request', currency, amount: priceMicros / 1_000_000 }),
     configured: offering.configured ?? true,
   };
+}
+
+function sanitizeManagedChannelText(value: string): string {
+  return value
+    .replace(/https?:\/\/api\.tu-zi\.com/gi, 'Esse 服务')
+    .replace(/tu-?zi|兔子/gi, 'Esse');
 }
 
 function assertLegacyEstimate(offering: OfferingSummary, count: number, approved?: number): void {

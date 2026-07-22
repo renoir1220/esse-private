@@ -1,8 +1,10 @@
 # Esse Agent Sidecar
 
+This private Esse downstream starts at version `1.0.0` and does not inherit the Community release number. Shared behavior is merged from the public upstream; managed onboarding and service integration remain private.
+
 This directory contains the Agent Sidecar distribution of Esse. “Agent Sidecar” is a technical packaging term; the installed application, window, MCP server, skills, and user-facing documentation all call the product **Esse**.
 
-It runs a local Electron workspace and authenticated loopback HTTP MCP for WorkBuddy and other compatible Agents. It has no hosted Esse backend. Provider profiles are stored locally, API keys are protected by the operating system, and the release contains built-in Tuzi configuration presets but no API key.
+It runs a local Electron workspace and authenticated loopback HTTP MCP for WorkBuddy and other compatible Agents. It has no hosted Esse backend. The ordinary setup path accepts only an Esse Key; connection details stay internal, custom Provider profiles remain available under Advanced settings, and every key is protected by the operating system.
 
 ## Shared implementation
 

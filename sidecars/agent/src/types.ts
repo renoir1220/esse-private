@@ -239,6 +239,8 @@ export interface ModifyBatchInput {
 
 export interface DesktopState {
   configured: boolean;
+  esseService: EsseServiceStatus;
+  onboarding: OnboardingStatus;
   providers: ProviderProfile[];
   offerings: OfferingSummary[];
   defaultOfferingId?: string;
@@ -251,6 +253,15 @@ export interface DesktopState {
   error?: string;
 }
 
+export interface EsseServiceStatus {
+  configured: boolean;
+  concurrency: number;
+}
+
+export interface OnboardingStatus {
+  dismissed: boolean;
+}
+
 export interface McpStatus {
   available: boolean;
   endpoint: string;
@@ -261,6 +272,9 @@ export interface EsseDesktopBridge {
   readonly platform: string;
   getState(): Promise<DesktopState>;
   refresh(): Promise<DesktopState>;
+  connectEsseKey(apiKey: string): Promise<DesktopState>;
+  setEsseConcurrency(concurrency: number): Promise<DesktopState>;
+  dismissOnboarding(): Promise<DesktopState>;
   saveProvider(input: SaveProviderInput): Promise<DesktopState>;
   deleteProvider(id: string): Promise<DesktopState>;
   testProvider(input: { baseUrl: string; profileId?: string; apiKey?: string }): Promise<{ models: string[]; requestId?: string }>;
@@ -277,7 +291,7 @@ export interface EsseDesktopBridge {
   copyImage(id: string): Promise<void>;
   saveImage(id: string): Promise<string | undefined>;
   openBatchFolder(batchId: string): Promise<void>;
-  copyWorkBuddyConfig(): Promise<void>;
+  copyAgentSetupPrompt(): Promise<void>;
   onStateChanged(callback: (state: DesktopState) => void): () => void;
   onNavigate(callback: (input: { tab: 'batches' | 'settings'; batchId?: string }) => void): () => void;
   reportReady(details: { title: string; bridgeAvailable: boolean }): void;

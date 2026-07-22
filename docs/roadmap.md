@@ -18,7 +18,7 @@ The Sidecar was imported as a source snapshot without the private repository's G
 
 - Keep the existing Plugin installer and archive layout compatible while moving its source to `plugins/codex`.
 - Ship the Windows x64 Agent Sidecar installer in the same GitHub Release.
-- Configure Providers locally in both distributions. Include Tuzi presets and model catalog data but never an API key.
+- Configure the managed Esse connection and advanced Providers locally in both distributions. Include model catalog data but never an API key.
 - Keep Agent submission asynchronous: once Esse durably accepts Provider work, the Agent returns control without polling or copying outputs back unless asked.
 - Maintain user-visible workflow parity and record semantic ports in `SYNC.md`.
 

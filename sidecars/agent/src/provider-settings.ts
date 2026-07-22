@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { CredentialStore } from './credential-store';
+import { createEsseManagedProviderInput, DEFAULT_ESSE_CONCURRENCY, ESSE_MANAGED_BASE_URL, ESSE_MANAGED_PROVIDER_ID, isEsseManagedProvider } from './provider-catalog';
 import type { OfferingConfig, OfferingSummary, ProviderProfile, SaveProviderInput } from './types';
 
 type StoredProviderProfile = Omit<ProviderProfile, 'hasApiKey'>;
@@ -22,6 +23,59 @@ export class ProviderSettingsStore {
     return Promise.all(settings.providers.map(async (profile) => ({ ...structuredClone(profile), hasApiKey: await this.credentials.has(profile.id) })));
   }
 
+  async listCustomProfiles(): Promise<ProviderProfile[]> {
+    return (await this.listProfiles()).filter((profile) => !isEsseManagedProvider(profile));
+  }
+
+  async hasEsseKey(): Promise<boolean> {
+    const managed = (await this.listProfiles()).filter(isEsseManagedProvider);
+    return (await Promise.all(managed.map((profile) => this.credentials.has(profile.id)))).some(Boolean);
+  }
+
+  async getEsseConcurrency(): Promise<number> {
+    const managed = (await this.listProfiles()).filter(isEsseManagedProvider);
+    const preferred = managed.find((profile) => profile.id === ESSE_MANAGED_PROVIDER_ID || profile.tierName.trim().toLocaleLowerCase() === 'default');
+    if (!preferred) return DEFAULT_ESSE_CONCURRENCY;
+    if (preferred.id !== ESSE_MANAGED_PROVIDER_ID && preferred.concurrency === 3) {
+      await this.saveEsseConcurrency(DEFAULT_ESSE_CONCURRENCY);
+      return DEFAULT_ESSE_CONCURRENCY;
+    }
+    return preferred.concurrency;
+  }
+
+  async saveEsseConcurrency(value: number): Promise<number> {
+    const concurrency = normalizeConcurrency(value);
+    const managed = (await this.listProfiles()).filter(isEsseManagedProvider);
+    if (!managed.length) {
+      await this.saveProvider({ ...createEsseManagedProviderInput(), concurrency });
+      return concurrency;
+    }
+    for (const profile of managed) await this.saveProvider(providerInput(profile, concurrency));
+    return concurrency;
+  }
+
+  async saveEsseKey(apiKey: string): Promise<ProviderProfile> {
+    const cleanKey = apiKey.trim();
+    if (!cleanKey) throw new Error('请输入 Esse Key。');
+    const managed = (await this.listProfiles()).filter(isEsseManagedProvider);
+    const migrated: ProviderProfile[] = [];
+    for (const profile of managed) {
+      const needsDefaultMigration = profile.id !== ESSE_MANAGED_PROVIDER_ID && profile.concurrency === 3;
+      migrated.push(needsDefaultMigration ? await this.saveProvider(providerInput(profile, DEFAULT_ESSE_CONCURRENCY)) : profile);
+    }
+    const defaultProfile = migrated.find((profile) => profile.id === ESSE_MANAGED_PROVIDER_ID || profile.tierName.trim().toLocaleLowerCase() === 'default');
+    const saved = defaultProfile
+      ? defaultProfile
+      : await this.saveProvider(createEsseManagedProviderInput(cleanKey));
+    await Promise.all(migrated.map((profile) => this.credentials.set(profile.id, cleanKey)));
+    if (saved.id !== ESSE_MANAGED_PROVIDER_ID || defaultProfile) await this.credentials.set(saved.id, cleanKey);
+    return { ...saved, hasApiKey: true };
+  }
+
+  async testEsseKey(apiKey: string, fetchImpl: typeof fetch = fetch): Promise<{ models: string[]; requestId?: string }> {
+    return this.testProvider({ baseUrl: ESSE_MANAGED_BASE_URL, apiKey }, fetchImpl);
+  }
+
   async listOfferings(): Promise<OfferingSummary[]> {
     const profiles = await this.listProfiles();
     return profiles.flatMap((profile) => profile.offerings.map((offering) => offeringSummary(profile, offering)));
@@ -35,7 +89,7 @@ export class ProviderSettingsStore {
 
   async getApiKey(id: string): Promise<string> {
     const apiKey = await this.credentials.get(id);
-    if (!apiKey) throw new Error(`Provider ${id} 还没有 API Key，请在 Esse 设置中填写。`);
+    if (!apiKey) throw new Error('当前图片服务还没有可用的 Key，请在 Esse 设置中填写。');
     return apiKey;
   }
 
@@ -64,7 +118,7 @@ export class ProviderSettingsStore {
       tierName,
       baseUrl,
       adapterId: input.adapterId,
-      concurrency: Math.max(1, Math.min(12, Math.trunc(input.concurrency || 1))),
+      concurrency: normalizeConcurrency(input.concurrency),
       offerings,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
@@ -122,6 +176,23 @@ export class ProviderSettingsStore {
   }
 }
 
+function providerInput(profile: ProviderProfile, concurrency: number): SaveProviderInput {
+  return {
+    id: profile.id,
+    displayName: profile.displayName,
+    tierName: profile.tierName,
+    baseUrl: profile.baseUrl,
+    adapterId: profile.adapterId,
+    concurrency,
+    offerings: profile.offerings.map((offering) => structuredClone(offering)),
+  };
+}
+
+function normalizeConcurrency(value: number): number {
+  if (!Number.isFinite(value)) throw new Error('并发数必须是 1 到 12 之间的整数。');
+  return Math.max(1, Math.min(12, Math.trunc(value)));
+}
+
 function normalizeOffering(value: OfferingConfig, profileId: string): OfferingConfig {
   const canonicalModelId = value.canonicalModelId.trim();
   const providerModelId = value.providerModelId.trim();
@@ -141,18 +212,19 @@ function normalizeOffering(value: OfferingConfig, profileId: string): OfferingCo
 
 function offeringSummary(profile: ProviderProfile, offering: OfferingConfig): OfferingSummary {
   const amount = offering.price.mode === 'per_request' && Number.isFinite(offering.price.amount) ? offering.price.amount! : 0;
+  const managed = isEsseManagedProvider(profile);
   return {
     id: offering.id,
     canonicalModelId: offering.canonicalModelId,
     providerModelId: offering.providerModelId,
     displayName: offering.displayName,
-    providerName: profile.displayName,
-    providerType: profile.adapterId,
-    tierName: profile.tierName,
+    providerName: managed ? 'Esse' : profile.displayName,
+    providerType: managed ? 'esse-managed' : profile.adapterId,
+    tierName: managed ? '内置' : profile.tierName,
     concurrency: profile.concurrency,
     priceMicros: Math.max(0, Math.round(amount * 1_000_000)),
     currency: offering.price.currency,
-    price: { ...offering.price },
+    price: managed ? { ...offering.price, note: 'Esse 内置模型参考价' } : { ...offering.price },
     configured: profile.hasApiKey,
     sizes: [...offering.sizes],
     supportsTextToImage: offering.supportsTextToImage,
@@ -177,5 +249,13 @@ function providerMessage(status: number, body: unknown): string {
   const record = body && typeof body === 'object' ? body as Record<string, unknown> : {};
   const error = record.error && typeof record.error === 'object' ? record.error as Record<string, unknown> : {};
   const message = typeof error.message === 'string' ? error.message : typeof record.message === 'string' ? record.message : `HTTP ${status}`;
-  return `Provider 连接失败：${message.replace(/sk-[A-Za-z0-9_-]{8,}/g, '[redacted]').slice(0, 800)}`;
+  return `连接失败：${sanitizeProviderText(message)}`;
+}
+
+function sanitizeProviderText(value: string): string {
+  return value
+    .replace(/sk-[A-Za-z0-9_-]{8,}/g, '[redacted]')
+    .replace(/https?:\/\/api\.tu-zi\.com/gi, 'Esse 服务')
+    .replace(/tu-?zi|兔子/gi, 'Esse')
+    .slice(0, 800);
 }

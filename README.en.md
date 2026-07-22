@@ -27,9 +27,9 @@ You can also download the matching Plugin ZIP from [GitHub Releases](https://git
 
 Download the matching `esse-agent-sidecar-windows-x64-*.exe` or `esse-agent-sidecar-macos-*-*.dmg` from [GitHub Releases](https://github.com/renoir1220/esse/releases), verify it against `sidecar-latest.json` or `checksums.txt`, and open Esse after installation. In Esse settings:
 
-1. Select a built-in Tuzi Provider preset or add an OpenAI-compatible Provider.
-2. Enter the API key inside Esse, test the connection, and save a default model.
-3. Copy the MCP configuration into the Agent's user-level HTTP MCP settings.
+1. Enter an Esse Key in the first-run guide and wait for the connection test to pass.
+2. Select a default model; advanced users can still add a compatible Provider under Advanced settings.
+3. Copy the Agent setup prompt, paste it into WorkBuddy or another Agent, and send it directly.
 
 Then simply tell the Agent to “use Esse to generate images.” Once durable background work is accepted, the Agent should return control immediately. It should not copy outputs back into the chat workspace or narrate prices and progress unless the user explicitly asks.
 
