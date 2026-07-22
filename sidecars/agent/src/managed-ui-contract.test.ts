@@ -28,6 +28,8 @@ describe('Managed Esse UI contract', () => {
     expect(renderer).toContain('重试失败任务');
     expect(renderer).not.toContain('确认重试');
     expect(renderer).toContain('retryAllFailedSelection(batch)');
+    expect(renderer).toContain("job.operation !== 'agent' ? <button");
+    expect(renderer).not.toContain('job.retryable ? <button');
     expect(renderer).toContain('setEsseConcurrency');
     expect(renderer).toContain('并发任务数');
     expect(renderer).not.toMatch(/<option[^>]*>[^<]*¥/);

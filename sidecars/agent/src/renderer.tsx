@@ -255,7 +255,7 @@ function App() {
           }}
           onRetryAll={(jobIds, includesUnknownCharge) => apply(
             () => window.esse.retryJobs(activeBatch.id, jobIds, includesUnknownCharge),
-            includesUnknownCharge ? '失败任务已重新排队；部分上次调用的扣费状态未知' : '所有可重试的失败任务已重新排队',
+            includesUnknownCharge ? '失败任务已重新排队；部分上次调用的扣费状态未知' : '失败任务已重新排队',
           )}
         /> : <EmptyState title="还没有图片批次" copy="请从 Agent 向 Esse 提交第一个图片任务。" />
       ) : null}
@@ -372,7 +372,7 @@ function BatchWorkspace(props: {
 
   return <div className="batch-page">
     <div className="section-heading">
-      <div><strong>{statusLabel(batch)}</strong>{batch.failed ? <button type="button" className="retry-all-button" title={retrySelection.jobIds.length ? '重新排队可重试的失败任务' : '当前失败任务不可重试'} disabled={props.busy || !retrySelection.jobIds.length} onClick={() => void props.onRetryAll(retrySelection.jobIds, retrySelection.includesUnknownCharge)}><ArrowClockwise size={13} weight="bold" />重试失败任务</button> : null}</div>
+      <div><strong>{statusLabel(batch)}</strong>{batch.failed ? <button type="button" className="retry-all-button" title={retrySelection.jobIds.length ? '重新排队失败任务' : 'Agent 任务需由当前 Agent 重新发起'} disabled={props.busy || !retrySelection.jobIds.length} onClick={() => void props.onRetryAll(retrySelection.jobIds, retrySelection.includesUnknownCharge)}><ArrowClockwise size={13} weight="bold" />重试失败任务</button> : null}</div>
     </div>
     <section className={`batch-workspace ${assets.length === 1 ? 'is-single' : ''}`}>
       <div className="image-grid">
@@ -494,7 +494,7 @@ function JobCard(props: { asset: GalleryAsset; referenceImages: SavedImage[]; se
       {pending ? <span className="status-overlay"><span className="spinner" />{job.status === 'queued' ? '等待中' : `生成中 ${Math.max(1, job.progress)}%`}</span> : null}
     </button>
     <div className="card-meta"><span>{asset.kind === 'backup' ? '历史版本' : job.status === 'succeeded' ? asset.offering.displayName : statusText(job.status)}</span><div className="card-tools"><button title="任务详情" onClick={props.onDetails}><Info size={14} /></button>{image ? <button title="另存为" onClick={() => void window.esse.saveImage(image.id)}><DownloadSimple size={14} /></button> : null}</div></div>
-    {asset.kind === 'job' && job.status === 'failed' ? <div className="job-error"><p>{job.error || '生成失败'}</p>{job.retryable ? <button onClick={() => void props.onRetry()}>重试</button> : <span>{job.chargeState === 'unknown' ? '扣费状态待复核' : '不可重试'}</span>}</div> : null}
+    {asset.kind === 'job' && job.status === 'failed' ? <div className="job-error"><p>{job.error || '生成失败'}</p>{job.operation !== 'agent' ? <button onClick={() => void props.onRetry()}>重试</button> : <span>需由 Agent 重新发起</span>}</div> : null}
     {pending && peekPosition ? createPortal(<PendingTaskPeek id={peekId} prompt={asset.prompt} images={props.referenceImages} position={peekPosition} onPointerEnter={keepPeekOpen} onPointerLeave={closePeekSoon} />, document.body) : null}
   </article>;
 }
