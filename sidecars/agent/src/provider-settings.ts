@@ -20,6 +20,12 @@ export class ProviderSettingsStore {
 
   async listProfiles(): Promise<ProviderProfile[]> {
     const settings = await this.read();
+    const migrated = settings.providers.map(syncEsseManagedCatalog);
+    if (migrated.some((profile, index) => profile !== settings.providers[index])) {
+      settings.providers = migrated;
+      settings.updatedAt = new Date().toISOString();
+      await this.write(settings);
+    }
     return Promise.all(settings.providers.map(async (profile) => ({ ...structuredClone(profile), hasApiKey: await this.credentials.has(profile.id) })));
   }
 
@@ -224,12 +230,28 @@ function offeringSummary(profile: ProviderProfile, offering: OfferingConfig): Of
     concurrency: profile.concurrency,
     priceMicros: Math.max(0, Math.round(amount * 1_000_000)),
     currency: offering.price.currency,
-    price: managed ? { ...offering.price, note: 'Esse 内置模型参考价' } : { ...offering.price },
+    price: { ...offering.price },
     configured: profile.hasApiKey,
     sizes: [...offering.sizes],
     supportsTextToImage: offering.supportsTextToImage,
     supportsImageToImage: offering.supportsImageToImage,
   };
+}
+
+function syncEsseManagedCatalog(profile: StoredProviderProfile): StoredProviderProfile {
+  if (!isEsseManagedProvider(profile)) return profile;
+  const offerings = createEsseManagedProviderInput().offerings.map((catalogOffering) => {
+    const existing = profile.offerings.find((offering) => (
+      offering.canonicalModelId === catalogOffering.canonicalModelId
+      && offering.providerModelId === catalogOffering.providerModelId
+    ));
+    return {
+      ...structuredClone(catalogOffering),
+      id: existing?.id || `${profile.id}:${catalogOffering.canonicalModelId}`,
+    };
+  });
+  if (JSON.stringify(offerings) === JSON.stringify(profile.offerings)) return profile;
+  return { ...profile, offerings, updatedAt: new Date().toISOString() };
 }
 
 function normalizeBaseUrl(value: string): string {

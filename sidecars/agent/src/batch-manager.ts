@@ -820,9 +820,10 @@ function normalizeBatch(batch: BatchRecord): BatchRecord {
 }
 
 function normalizeOffering(offering: OfferingSummary): OfferingSummary {
-  const priceMicros = Number.isFinite(offering.priceMicros) ? offering.priceMicros : 0;
   const currency = offering.currency || 'CNY';
   const legacyManaged = /^(兔子|tu-?zi)$/i.test(offering.providerName?.trim() || '');
+  const managed = legacyManaged || offering.providerType === 'esse-managed';
+  const priceMicros = managed ? 0 : Number.isFinite(offering.priceMicros) ? offering.priceMicros : 0;
   return {
     ...offering,
     providerName: legacyManaged ? 'Esse' : offering.providerName,
@@ -831,12 +832,13 @@ function normalizeOffering(offering: OfferingSummary): OfferingSummary {
     concurrency: Number.isInteger(offering.concurrency) && offering.concurrency > 0 ? offering.concurrency : 3,
     priceMicros,
     currency,
-    price: offering.price ? {
-      ...offering.price,
-      ...(legacyManaged ? { note: 'Esse 内置模型参考价' } : {}),
-    } : (offering.providerType === 'agent-generation'
-      ? { mode: 'model_quota', currency: 'MODEL' }
-      : { mode: 'per_request', currency, amount: priceMicros / 1_000_000 }),
+    price: managed
+      ? { mode: 'unknown', currency }
+      : offering.price
+        ? { ...offering.price }
+        : offering.providerType === 'agent-generation'
+          ? { mode: 'model_quota', currency: 'MODEL' }
+          : { mode: 'per_request', currency, amount: priceMicros / 1_000_000 },
     configured: offering.configured ?? true,
   };
 }
