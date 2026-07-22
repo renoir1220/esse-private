@@ -26,7 +26,9 @@ describe('Provider settings', () => {
     expect(await store.getApiKey(saved.id)).toBe('private-provider-key');
     expect(await readFile(filePath, 'utf8')).not.toContain('private-provider-key');
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ providerName: 'Esse', providerType: 'esse-managed', tierName: '内置', configured: true, priceMicros: 35_000 }),
+      expect.objectContaining({ providerName: 'Esse', providerType: 'esse-managed', tierName: '内置', configured: true, priceMicros: 0, price: { mode: 'unknown', currency: 'CNY' } }),
+      expect.objectContaining({ canonicalModelId: 'image2-v', providerModelId: 'gpt-image-2', displayName: 'image2-v' }),
+      expect.objectContaining({ canonicalModelId: 'gemini-3-pro-image-preview-4k', providerModelId: 'gemini-3-pro-image-preview-4k' }),
     ]));
     expect(await store.listCustomProfiles()).toEqual([]);
     expect(await store.hasEsseKey()).toBe(true);
@@ -99,6 +101,26 @@ describe('Provider settings', () => {
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
       expect.objectContaining({ providerType: 'esse-managed', concurrency: 10, configured: true }),
     ]));
+  });
+
+  it('migrates an existing managed profile to the current model catalog without carrying built-in prices', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'esse-managed-catalog-migration-'));
+    temporaryDirectories.push(directory);
+    const store = new ProviderSettingsStore(path.join(directory, 'providers.json'), new MemoryCredentials() as unknown as CredentialStore);
+    const legacy = createTuziProviderDraft('tuzi-default');
+    legacy.offerings = [{
+      ...legacy.offerings[0],
+      price: { mode: 'per_request', currency: 'CNY', amount: 0.035, note: 'legacy built-in price' },
+    }];
+    const saved = await store.saveProvider(legacy);
+
+    const profile = await store.getProfile(saved.id);
+    expect(profile.offerings).toHaveLength(7);
+    expect(profile.offerings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ displayName: 'image2-v', canonicalModelId: 'image2-v', providerModelId: 'gpt-image-2' }),
+      expect.objectContaining({ displayName: 'gemini-3-pro-image-preview-4k' }),
+    ]));
+    expect(profile.offerings.every((offering) => offering.price.mode === 'unknown' && offering.price.amount === undefined)).toBe(true);
   });
 
   it('requires HTTPS except for an explicit loopback Provider', async () => {

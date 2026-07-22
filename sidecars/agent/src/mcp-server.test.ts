@@ -125,10 +125,11 @@ describe('Esse MCP server', () => {
     expect(quotePayload).toMatchObject({
       offerings: expect.arrayContaining([
         expect.objectContaining({ providerName: 'Tuzi default', estimatedPricePerImage: '0.10' }),
-        expect.objectContaining({ id: 'workbuddy-agent-generation', providerType: 'agent-generation', estimatedPricePerImage: '0.00' }),
+        expect.objectContaining({ id: 'workbuddy-agent-generation', providerType: 'agent-generation' }),
       ]),
       conversationPolicy: expect.stringContaining('Only discuss'),
     });
+    expect((quotePayload as { offerings: Array<Record<string, unknown>> }).offerings.find((offering) => offering.id === 'workbuddy-agent-generation')).not.toHaveProperty('estimatedPricePerImage');
     expect(quotePayload).not.toHaveProperty('approvalRequired');
 
     const result = await client.callTool({

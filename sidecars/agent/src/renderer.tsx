@@ -537,7 +537,7 @@ function TaskDetailDialog({ asset, imagesById, onClose }: { asset: GalleryAsset;
       <div className="detail-summary">
         <div><span>状态</span><strong>{asset.kind === 'backup' ? '已保留' : statusText(job.status)}</strong></div>
         <div><span>模型</span><strong>{asset.offering.displayName}</strong></div>
-        <div><span>单价</span><strong>¥{formatCny(asset.offering.priceMicros)}</strong></div>
+        <div><span>单价</span><strong>{offeringPriceLabel(asset.offering)}</strong></div>
         <div><span>调用</span><strong>{job.callHistory.length} 次</strong></div>
         {metadata.available ? <><div><span>尺寸</span><strong>{metadata.width} × {metadata.height}</strong></div><div><span>文件</span><strong>{formatBytes(metadata.sizeBytes || 0)}</strong></div></> : null}
       </div>
@@ -809,6 +809,7 @@ function chargeText(state: BatchSnapshot['jobs'][number]['chargeState']) { retur
 function formatDuration(value?: number) { if (value === undefined) return '—'; return value < 1000 ? `${value} ms` : `${(value / 1000).toFixed(value < 10_000 ? 1 : 0)} s`; }
 function formatBytes(value: number) { if (value < 1024) return `${value} B`; if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`; return `${(value / 1024 ** 2).toFixed(1)} MB`; }
 function uniqueImages(images: SavedImage[]) { return [...new Map(images.map((image) => [image.id, image])).values()]; }
+function offeringPriceLabel(offering: OfferingSummary): string { return offering.price.mode === 'per_request' && Number.isFinite(offering.price.amount) ? `${offering.currency === 'CNY' ? '¥' : `${offering.currency} `}${formatCny(offering.priceMicros)}` : '—'; }
 function formatCny(micros: number): string { return (micros / 1_000_000).toFixed(2); }
 function cleanError(value: unknown): string { return (value instanceof Error ? value.message : String(value)).replace(/^Error invoking remote method '[^']+': Error: /, ''); }
 
