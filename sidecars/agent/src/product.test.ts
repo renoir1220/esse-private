@@ -18,4 +18,14 @@ describe('desktop product profile', () => {
     expect(product.macosAppBundleId).toMatch(/^com\.renoir\.esse\./);
     expect(product.releasePrefix).toBe('esse');
   });
+
+  it('allows fully unsigned releases but rejects partial signing configuration', async () => {
+    const workflow = await readFile(path.resolve('../..', '.github/workflows/release.yml'), 'utf8');
+    expect(workflow).toContain("steps.windows-signing.outputs.enabled == 'true'");
+    expect(workflow).toContain("steps.windows-signing.outputs.enabled == 'false'");
+    expect(workflow).toContain('Windows signing secrets must be configured together or all omitted.');
+    expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'true'");
+    expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'false'");
+    expect(workflow).toContain('macOS signing and notarization secrets must be configured together or all omitted.');
+  });
 });

@@ -7,7 +7,7 @@
   "overlayGroups": [
     {
       "name": "private-governance-and-release",
-      "reason": "Private licensing, installation, bilingual release notes, signed Sidecar-only release automation, and the inheritance verifier.",
+      "reason": "Private licensing, installation, bilingual release notes, all-or-none release signing automation, and the inheritance verifier.",
       "paths": [
         ".github/release-notes-prefix.md",
         ".github/workflows/private-inheritance.yml",

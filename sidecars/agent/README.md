@@ -20,7 +20,7 @@ npm run make
 npm run verify:icons:windows
 ```
 
-Local builds without signing environment variables emit an unsigned installer under `out/make/squirrel.windows/x64/Esse-Setup.exe`. Release builds normally must configure a trusted Authenticode certificate or cloud/HSM signer through the `@electron/windows-sign` environment variables and pass `npm run verify:signatures`. While the SignPath Foundation application is pending, `v0.3.0-alpha.2` and `v0.3.0` are explicit unsigned exceptions with Release warnings; later releases retain the signature gate.
+Builds without signing environment variables emit an unsigned installer under `out/make/squirrel.windows/x64/Esse-Setup.exe`. A release with both Windows signing secrets configured must pass `npm run verify:signatures`; a release with neither secret configured verifies and publishes explicitly disclosed unsigned artifacts. Supplying only one secret fails the release.
 
 The Squirrel application ID is `esse-agent-sidecar-app`, which is intentionally different from both the Codex Plugin data root and `%LOCALAPPDATA%\esse-agent-sidecar` runtime data root. Never change it back to `esse` or to a data-directory name.
 
@@ -37,6 +37,6 @@ npm run "make:macos:$arch"
 bash scripts/verify-macos-bundle.sh "$arch"
 ```
 
-Local builds may be unsigned for development. A GitHub Release build must configure `MACOS_SIGN_IDENTITY` plus the three `MACOS_NOTARY_API_*` values, then pass the strict bundle signature, Gatekeeper, notarization-ticket, icon, architecture, and packaged-app smoke checks. User data is stored in `~/Library/Application Support/esse-agent-sidecar`; API keys and the MCP pairing token use Electron `safeStorage` backed by macOS Keychain.
+When the complete macOS signing and notarization credential set is configured, a GitHub Release build must pass strict Developer ID signature, Gatekeeper, notarization-ticket, icon, architecture, and packaged-app smoke checks. When none is configured, the release runs all non-signing checks and publishes explicitly disclosed unsigned artifacts; a partial credential set fails the release. User data is stored in `~/Library/Application Support/esse-agent-sidecar`; API keys and the MCP pairing token use Electron `safeStorage` backed by macOS Keychain.
 
 Use `npm start` only for development debugging. Do not commit `out/`, `.vite/`, `node_modules/`, local Provider settings, credentials, inputs, outputs, or QA captures.
