@@ -59,6 +59,18 @@ The initial import deliberately excludes the private service, user accounts, bal
 - Ordinary Esse settings expose managed concurrency alongside the default model. New and legacy-default managed connections use 10 concurrent tasks unless the user changes it.
 - Model selectors no longer display currency amounts. Stored price metadata remains available internally until the product moves to points.
 
+## 2026-07-22 — edition boundary
+
+- The public desktop product is now identified as Esse Community and keeps the original Provider-first settings with no first-run onboarding.
+- Commercial onboarding and managed-service behavior live in a separate private downstream repository whose release line starts at `1.0.0`.
+- `sidecars/agent/product.json` is the small edition overlay for names, bundle IDs, data directories, installer names, and release asset prefixes; build verification reads this profile on Windows and macOS.
+- Shared gallery, retry, prompt-language, Agent handoff, MCP, and image-history fixes remain in the public upstream and are merged downstream.
+
+## 2026-07-23 — per-job Agent reference isolation
+
+- Agent-owned batches expose only callback-safe batch/job summaries until `start_agent_image_job` is called for one exact job.
+- Each start call returns only that job's Prompt and reference paths. Concurrent jobs remain separate outbound image-generation requests; reference paths and request-size checks must never be aggregated across the batch.
+
 ## Deferred
 
 - shared domain/provider/UI packages;

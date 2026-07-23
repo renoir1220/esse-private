@@ -15,14 +15,25 @@ const macLauncher = await readFile(path.join(pluginRoot, "scripts", "esse-macos-
 const packageScript = await readFile(path.join(pluginRoot, "scripts", "package-releases.mjs"), "utf8");
 const releaseWorkflow = await readFile(path.join(repositoryRoot, ".github", "workflows", "release.yml"), "utf8");
 const sidecarPackage = JSON.parse(await readFile(path.join(repositoryRoot, "sidecars", "agent", "package.json"), "utf8"));
+const sidecarProduct = JSON.parse(await readFile(path.join(repositoryRoot, "sidecars", "agent", "product.json"), "utf8"));
 const sidecarForgeConfig = await readFile(path.join(repositoryRoot, "sidecars", "agent", "forge.config.ts"), "utf8");
 const sidecarPlatform = await readFile(path.join(repositoryRoot, "sidecars", "agent", "src", "platform.ts"), "utf8");
 const releaseMetadataScript = await readFile(path.join(pluginRoot, "scripts", "create-release-metadata.mjs"), "utf8");
 
 assert.match(manifest.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, "plugin version must be release semver without build metadata");
+assert.match(sidecarPackage.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/, "Agent Sidecar version must be release semver without build metadata");
 assert.equal(packageJson.version, manifest.version, "package.json and plugin.json versions must match");
-assert.equal(sidecarPackage.version, manifest.version, "Plugin and Agent Sidecar versions must match");
-if (expectedTag) assert.equal(expectedTag, `v${manifest.version}`, "Git tag must match the plugin version");
+assert(
+  ["shared-components", "independent-sidecar"].includes(sidecarProduct.releaseVersionPolicy),
+  "product.json must declare a supported releaseVersionPolicy"
+);
+const releaseVersion = sidecarProduct.releaseVersionPolicy === "independent-sidecar"
+  ? sidecarPackage.version
+  : manifest.version;
+if (sidecarProduct.releaseVersionPolicy === "shared-components") {
+  assert.equal(sidecarPackage.version, manifest.version, "Shared-component releases require matching Plugin and Agent Sidecar versions");
+}
+if (expectedTag) assert.equal(expectedTag, `v${releaseVersion}`, "Git tag must match the product release version");
 assert.equal(manifest.repository, "https://github.com/renoir1220/esse");
 assert.equal(marketplace.name, "esse-local");
 assert.equal(marketplace.plugins[0].source.path, "./plugins/codex");
@@ -34,14 +45,21 @@ assert(macInstaller.includes("is_safe_macos_launcher") && macInstaller.includes(
 assert(macLauncher.includes("codex-primary-runtime/dependencies/node/bin/node"));
 assert(macLauncher.includes("codesign --verify --strict") && macLauncher.includes("spctl --assess --type execute") && !macLauncher.includes("command -v node"));
 assert(packageScript.includes('runtime: "codex-node"') && packageScript.includes('command: "/bin/bash"'));
-assert(releaseWorkflow.includes("macOS package must not contain an Esse-built Mach-O launcher"));
-assert(releaseWorkflow.includes("package-agent-sidecar-macos"), "release workflow must package the macOS Agent Sidecar");
 assert(releaseWorkflow.includes("verify-macos-bundle.sh"), "release workflow must verify the packaged macOS app");
 assert(sidecarForgeConfig.includes("WINDOWS_SQUIRREL_APP_ID"), "Windows installer identity must be isolated from Plugin data");
 assert(sidecarForgeConfig.includes("MakerDMG"), "Agent Sidecar must configure a macOS DMG");
-assert(sidecarPlatform.includes("Application Support") && sidecarPlatform.includes("esse-agent-sidecar"));
-assert(releaseMetadataScript.includes("esse-agent-sidecar-macos-arm64") || releaseMetadataScript.includes('name: "macos-arm64"'));
-assert(releaseWorkflow.includes("--prerelease"), "prerelease tags must not replace the latest stable GitHub Release");
+assert.equal(sidecarPackage.productName, sidecarProduct.displayName, "package and product names must match");
+assert(sidecarPlatform.includes("Application Support") && sidecarPlatform.includes("userDataDirectory"));
+assert(releaseMetadataScript.includes("sidecarProduct.releasePrefix") && releaseMetadataScript.includes('name: "macos-arm64"'));
+if (sidecarProduct.releaseVersionPolicy === "shared-components") {
+  assert.equal(sidecarProduct.edition, "community", "shared public releases must use the Community product profile");
+  assert(releaseWorkflow.includes("macOS package must not contain an Esse-built Mach-O launcher"));
+  assert(releaseWorkflow.includes("package-agent-sidecar-macos"), "shared releases must package the macOS Agent Sidecar");
+  assert(releaseWorkflow.includes("--prerelease"), "prerelease tags must not replace the latest stable GitHub Release");
+} else {
+  assert.notEqual(sidecarProduct.edition, "community", "Community releases must keep the shared-component version policy");
+  assert(releaseWorkflow.includes("sidecars/agent"), "independent releases must package the Agent Sidecar");
+}
 await Promise.all([
   access(path.join(repositoryRoot, "AGENTS.md")),
   access(path.join(repositoryRoot, "LICENSE")),
@@ -49,4 +67,12 @@ await Promise.all([
   access(path.join(pluginRoot, "mcp", "core.cjs"))
 ]);
 
-console.log(JSON.stringify({ status: "ok", version: manifest.version, tag: expectedTag || null, marketplace: marketplace.name }));
+console.log(JSON.stringify({
+  status: "ok",
+  version: releaseVersion,
+  pluginVersion: manifest.version,
+  sidecarVersion: sidecarPackage.version,
+  releaseVersionPolicy: sidecarProduct.releaseVersionPolicy,
+  tag: expectedTag || null,
+  marketplace: marketplace.name
+}));

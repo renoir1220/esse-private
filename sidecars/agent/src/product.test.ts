@@ -4,13 +4,13 @@ import { describe, expect, it } from 'vitest';
 import product from '../product.json';
 
 describe('desktop product profile', () => {
-  it('starts the independent Esse release line at 1.0.0', async () => {
+  it('keeps the independent Esse release line and product identity aligned', async () => {
     const packageJson = JSON.parse(await readFile(path.resolve('package.json'), 'utf8')) as { name: string; private: boolean; productName: string; version: string };
     expect(product.edition).toBe('esse');
     expect(packageJson.name).toBe('@esse/desktop');
     expect(packageJson.private).toBe(true);
     expect(packageJson.productName).toBe(product.displayName);
-    expect(packageJson.version).toBe('1.0.0');
+    expect(packageJson.version).toBe('1.0.1');
   });
 
   it('keeps the Esse installer and runtime identities isolated', () => {
