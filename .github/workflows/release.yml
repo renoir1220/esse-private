@@ -38,6 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
@@ -47,22 +48,74 @@ jobs:
       - run: npm ci
       - name: Verify independent Esse tag
         shell: bash
-        run: test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+        run: |
+          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          git merge-base --is-ancestor "$tag_commit" origin/main
       - run: npm run typecheck
       - run: npm test
+      - name: Configure Windows Authenticode signing
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE_PFX_BASE64) { throw 'WINDOWS_CERTIFICATE_PFX_BASE64 is required for a formal release.' }
+          if (-not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'WINDOWS_CERTIFICATE_PASSWORD is required for a formal release.' }
+          $certificate = Join-Path $env:RUNNER_TEMP 'esse-authenticode.pfx'
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
+          "WINDOWS_CERTIFICATE_FILE=$certificate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Configure Developer ID signing and notarization
+        if: matrix.platform == 'macos'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_BASE64 }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          test -n "$MACOS_CERTIFICATE_P12_BASE64"
+          test -n "$MACOS_CERTIFICATE_PASSWORD"
+          test -n "$MACOS_NOTARY_API_KEY_BASE64"
+          test -n "$MACOS_NOTARY_API_KEY_ID"
+          test -n "$MACOS_NOTARY_API_ISSUER_ID"
+          test -n "$MACOS_SIGN_IDENTITY"
+          certificate="$RUNNER_TEMP/esse-developer-id.p12"
+          notary_key="$RUNNER_TEMP/AuthKey_${MACOS_NOTARY_API_KEY_ID}.p8"
+          keychain="$RUNNER_TEMP/esse-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | /usr/bin/base64 -D > "$certificate"
+          printf '%s' "$MACOS_NOTARY_API_KEY_BASE64" | /usr/bin/base64 -D > "$notary_key"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          security list-keychains -d user -s "$keychain"
+          echo "MACOS_NOTARY_API_KEY_PATH=$notary_key" >> "$GITHUB_ENV"
+          echo "MACOS_NOTARY_API_KEY_ID=$MACOS_NOTARY_API_KEY_ID" >> "$GITHUB_ENV"
+          echo "MACOS_NOTARY_API_ISSUER_ID=$MACOS_NOTARY_API_ISSUER_ID" >> "$GITHUB_ENV"
+          echo "MACOS_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
       - name: Build Windows
         if: matrix.platform == 'windows'
         run: npm run make
       - name: Verify Windows
         if: matrix.platform == 'windows'
         run: npm run verify:package:windows
+      - name: Verify Windows Authenticode signatures
+        if: matrix.platform == 'windows'
+        run: npm run verify:signatures
       - name: Build macOS
         if: matrix.platform == 'macos'
         run: npm run make:macos:${{ matrix.arch }}
       - name: Verify macOS
         if: matrix.platform == 'macos'
         shell: bash
-        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
+        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }} --require-signed
       - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -76,12 +129,26 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: esse-*
           path: release
           merge-multiple: true
+      - name: Create checksums and Sidecar metadata
+        run: node scripts/create-private-release-metadata.mjs "$RELEASE_TAG"
       - name: Publish Esse release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY" --verify-tag --title "Esse $RELEASE_TAG" --generate-notes
+        shell: bash
+        run: |
+          prerelease=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Esse $RELEASE_TAG" \
+            --notes-file .github/release-notes-prefix.md \
+            "${prerelease[@]}"
