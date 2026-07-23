@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = path.resolve(import.meta.dirname);
 const renderer = fs.readFileSync(path.join(sourceRoot, 'renderer.tsx'), 'utf8');
 const styles = fs.readFileSync(path.join(sourceRoot, 'index.css'), 'utf8');
+const preload = fs.readFileSync(path.join(sourceRoot, 'preload.ts'), 'utf8');
+const main = fs.readFileSync(path.join(sourceRoot, 'main.ts'), 'utf8');
 
 describe('Managed Esse UI contract', () => {
   it('keeps channel-specific names out of the renderer', () => {
@@ -42,5 +44,15 @@ describe('Managed Esse UI contract', () => {
     expect(renderer).toContain('张参考图');
     expect(styles).toContain('.pending-task-peek');
     expect(styles).toContain('.image-card[data-pending-task="true"]:focus-visible');
+  });
+
+  it('copies exact batch and image references through the native clipboard bridge', () => {
+    expect(renderer).toContain('className="batch-reference-copy"');
+    expect(renderer).toContain('复制批次名称和 ID');
+    expect(renderer).toContain('复制图片 ID');
+    expect(preload).toContain("'references:copy-batch'");
+    expect(preload).toContain("'references:copy-image-id'");
+    expect(main).toContain("clipboard.writeText(batchReferenceText(batch.title, batch.id))");
+    expect(main).toContain("clipboard.writeText(imageIdReferenceText(id))");
   });
 });
