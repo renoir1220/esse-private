@@ -2,12 +2,18 @@
 
 This policy applies only to proprietary Esse Agent Sidecar artifacts released from `renoir1220/esse-private`. The public Community SignPath policy does not cover unpublished or proprietary source.
 
-Every formal private release must pass all of these gates before GitHub publishes any asset:
+Code signing is temporarily optional while trusted signing credentials are unavailable. The release workflow uses an all-or-none policy independently for each platform:
 
-- the Windows application executable and Squirrel installer have valid Authenticode signatures and trusted timestamps;
-- both macOS application bundles and DMGs have a Developer ID signature, pass Gatekeeper assessment, are notarized by Apple, and contain a stapled ticket;
+- when every Windows credential is configured, the application executable and Squirrel installer must have valid Authenticode signatures and trusted timestamps;
+- when every macOS credential is configured, both architecture builds must use Developer ID signing and pass Gatekeeper, Apple notarization, and stapled-ticket verification;
+- when none of a platform's credentials are configured, the workflow may publish unsigned artifacts after all non-signing package, architecture, icon, and packaged-app smoke checks pass;
+- when only part of a platform's credential set is configured, the workflow fails instead of silently publishing a partially configured release.
+
+Every release, signed or unsigned, must also satisfy these gates:
+
 - Windows x64, macOS arm64, and macOS x64 assets are built from the same tag contained in `main`;
-- `sidecar-latest.json` and `checksums.txt` are generated from the final signed assets.
+- `sidecar-latest.json` and `checksums.txt` are generated from the final assets;
+- release notes clearly disclose any unsigned or unnotarized platform artifacts.
 
 The release workflow receives signing material only through GitHub Actions Secrets:
 
@@ -20,4 +26,4 @@ The release workflow receives signing material only through GitHub Actions Secre
 - `MACOS_NOTARY_API_ISSUER_ID`
 - `MACOS_SIGN_IDENTITY`
 
-Signing material must never be committed, placed in an artifact, printed in logs, pasted into chat, or added to a pull request. Local developer builds may remain unsigned, but an unsigned artifact is never a formal private release.
+Signing material must never be committed, placed in an artifact, printed in logs, pasted into chat, or added to a pull request. When trusted credentials become available, configure the complete platform credential set in GitHub Actions Secrets; strict signature and notarization gates then turn on automatically.

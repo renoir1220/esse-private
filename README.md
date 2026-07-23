@@ -44,7 +44,7 @@ Codex 应先阅读 [`INSTALL.md`](INSTALL.md)，再识别平台、下载 Release
 
 ## 代码签名
 
-私有 Agent Sidecar 的正式产物遵循独立的[私有发行签名策略](PRIVATE-CODE-SIGNING.md)；公开 Community 的 SignPath 策略不覆盖专有源码。Windows 正式包必须通过应用程序和安装程序的 Authenticode 验证；macOS 正式包必须通过 Developer ID、Apple 公证、Gatekeeper 和票据装订验证。私有正式版没有未签名例外。
+私有 Agent Sidecar 的正式产物遵循独立的[私有发行签名策略](PRIVATE-CODE-SIGNING.md)；公开 Community 的 SignPath 策略不覆盖专有源码。当前签名凭据未就绪时允许发布明确标注的未签名产物；某个平台的凭据一旦完整配置，工作流会自动恢复并强制执行 Windows Authenticode 或 macOS Developer ID、公证、Gatekeeper 与票据装订验证。只配置部分凭据会阻断发布。
 
 ## 仓库结构
 

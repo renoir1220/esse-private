@@ -54,21 +54,41 @@ jobs:
           git merge-base --is-ancestor "$tag_commit" origin/main
       - run: npm run typecheck
       - run: npm test
-      - name: Configure Windows Authenticode signing
+      - name: Resolve Windows signing mode
         if: matrix.platform == 'windows'
+        id: windows-signing
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if (-not $env:WINDOWS_CERTIFICATE_PFX_BASE64) { throw 'WINDOWS_CERTIFICATE_PFX_BASE64 is required for a formal release.' }
-          if (-not $env:WINDOWS_CERTIFICATE_PASSWORD) { throw 'WINDOWS_CERTIFICATE_PASSWORD is required for a formal release.' }
+          $required = @(
+            $env:WINDOWS_CERTIFICATE_PFX_BASE64,
+            $env:WINDOWS_CERTIFICATE_PASSWORD
+          )
+          $configuredCount = @($required | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
+          if ($configuredCount -eq 0) {
+            "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+            Write-Warning 'Windows signing credentials are not configured. This release will contain unsigned Windows artifacts.'
+          } elseif ($configuredCount -ne $required.Count) {
+            throw 'Windows signing secrets must be configured together or all omitted.'
+          } else {
+            "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          }
+      - name: Configure Windows Authenticode signing
+        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'true'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
           $certificate = Join-Path $env:RUNNER_TEMP 'esse-authenticode.pfx'
           [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
           "WINDOWS_CERTIFICATE_FILE=$certificate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-      - name: Configure Developer ID signing and notarization
+      - name: Resolve macOS signing mode
         if: matrix.platform == 'macos'
+        id: macos-signing
         shell: bash
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -78,12 +98,38 @@ jobs:
           MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
           MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
         run: |
-          test -n "$MACOS_CERTIFICATE_P12_BASE64"
-          test -n "$MACOS_CERTIFICATE_PASSWORD"
-          test -n "$MACOS_NOTARY_API_KEY_BASE64"
-          test -n "$MACOS_NOTARY_API_KEY_ID"
-          test -n "$MACOS_NOTARY_API_ISSUER_ID"
-          test -n "$MACOS_SIGN_IDENTITY"
+          required=(
+            "$MACOS_CERTIFICATE_P12_BASE64"
+            "$MACOS_CERTIFICATE_PASSWORD"
+            "$MACOS_NOTARY_API_KEY_BASE64"
+            "$MACOS_NOTARY_API_KEY_ID"
+            "$MACOS_NOTARY_API_ISSUER_ID"
+            "$MACOS_SIGN_IDENTITY"
+          )
+          configured_count=0
+          for value in "${required[@]}"; do
+            if [[ -n "$value" ]]; then configured_count=$((configured_count + 1)); fi
+          done
+          if [[ "$configured_count" -eq 0 ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::macOS signing credentials are not configured. This release will not be Developer ID signed or notarized."
+          elif [[ "$configured_count" -ne "${#required[@]}" ]]; then
+            echo "macOS signing and notarization secrets must be configured together or all omitted." >&2
+            exit 1
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Configure Developer ID signing and notarization
+        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_NOTARY_API_KEY_BASE64: ${{ secrets.MACOS_NOTARY_API_KEY_BASE64 }}
+          MACOS_NOTARY_API_KEY_ID: ${{ secrets.MACOS_NOTARY_API_KEY_ID }}
+          MACOS_NOTARY_API_ISSUER_ID: ${{ secrets.MACOS_NOTARY_API_ISSUER_ID }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
           certificate="$RUNNER_TEMP/esse-developer-id.p12"
           notary_key="$RUNNER_TEMP/AuthKey_${MACOS_NOTARY_API_KEY_ID}.p8"
           keychain="$RUNNER_TEMP/esse-signing.keychain-db"
@@ -107,15 +153,34 @@ jobs:
         if: matrix.platform == 'windows'
         run: npm run verify:package:windows
       - name: Verify Windows Authenticode signatures
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'true'
         run: npm run verify:signatures
+      - name: Verify unsigned Windows artifacts
+        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'false'
+        shell: pwsh
+        run: |
+          $product = Get-Content -Raw -Encoding UTF8 'product.json' | ConvertFrom-Json
+          $targets = @(
+            (Join-Path (Get-Location) ("out\{0}-win32-x64\{1}.exe" -f $product.displayName, $product.executableName)),
+            (Join-Path (Get-Location) ("out\make\squirrel.windows\x64\{0}" -f $product.windowsSetupExe))
+          )
+          foreach ($target in $targets) {
+            if (-not (Test-Path -LiteralPath $target)) { throw "Missing Windows release artifact: $target" }
+            $status = (Get-AuthenticodeSignature -LiteralPath $target).Status
+            if ($status -ne 'NotSigned') { throw "Expected unsigned Windows artifact but found signature status ${status}: $target" }
+            Write-Output "$target is intentionally unsigned."
+          }
       - name: Build macOS
         if: matrix.platform == 'macos'
         run: npm run make:macos:${{ matrix.arch }}
-      - name: Verify macOS
-        if: matrix.platform == 'macos'
+      - name: Verify signed and notarized macOS package
+        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'true'
         shell: bash
         run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }} --require-signed
+      - name: Verify unsigned macOS package
+        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'false'
+        shell: bash
+        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
       - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

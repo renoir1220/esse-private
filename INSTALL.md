@@ -78,11 +78,11 @@ Verify the asset SHA256 against the matching `*Sha256` field before opening it. 
 
 ### Windows x64
 
-Run the verified `.exe` installer. Every formal private release must pass the repository Authenticode gate for both the application and installer. If Windows reports a missing or invalid publisher signature, stop and report the exact error; never disable Windows security controls.
+Run the checksum-verified `.exe` installer. The release notes disclose whether the application and installer are Authenticode-signed. When the release is unsigned, report that Windows may show an unknown-publisher or SmartScreen warning and do not claim publisher verification. If Windows blocks the installer, stop and report the exact error; never disable Windows security controls.
 
 ### macOS arm64 and x64
 
-Open the verified `.dmg`, drag `Esse.app` into Applications, and open Esse normally. The release workflow requires a Developer ID signature, Apple notarization, and a stapled notarization ticket. If Gatekeeper rejects the app, stop and report the exact error. Never remove quarantine attributes, disable Gatekeeper, or instruct the user to choose an override.
+Open the checksum-verified `.dmg`, drag `Esse.app` into Applications, and open Esse normally. The release notes disclose whether the app is Developer ID-signed, notarized by Apple, and contains a stapled ticket. An unsigned release may be rejected by Gatekeeper; if that happens, stop and report the exact error. Never remove quarantine attributes, disable Gatekeeper, or instruct the user to choose an override.
 
 After installation, the user opens Esse and completes setup inside its settings page:
 

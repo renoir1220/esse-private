@@ -2,6 +2,7 @@
 
 ### Esse 1.0.1
 
+- 本版本的 Windows 和 macOS 安装包暂未进行代码签名或 Apple 公证；发布页同时提供 SHA256 校验值。获得可信签名凭据后，后续版本会自动恢复严格的签名与公证验证。
 - Agent 批次现在按任务隔离 Prompt、参考图和请求大小。多个任务仍可并发执行，但不会再把不同任务的参考图合并进同一次图片服务请求，从而避免单任务未超限却因批次总量触发 `request body too large`。
 - 当前批次名称旁新增复制按钮，图片右键菜单新增“复制图片 ID”。用户可以把准确的 `batchId` 和 `imageId` 直接粘贴给 Agent，明确指定要修改的批次和图片。
 - 批次清理现在会等待后台写入结束，避免刚删除的批次因未完成的持久化操作在重启后重新出现。
@@ -14,6 +15,7 @@
 
 ### Esse 1.0.1
 
+- Windows and macOS installers in this release are not yet code-signed or Apple-notarized; SHA256 checksums are published alongside them. Strict signing and notarization verification will turn on automatically once trusted credentials become available.
 - Agent batches now isolate each job's prompt, references, and request-size budget. Independent jobs can still run concurrently, but references from different jobs are never combined into one image-service request, preventing `request body too large` when every individual job is below the limit.
 - A copy control now sits beside the active batch name, and image context menus include **Copy image ID**. Users can paste exact `batchId` and `imageId` values into an Agent conversation to identify the batch and image to modify.
 - Batch cleanup now waits for pending background writes, preventing a recently deleted batch from reappearing after restart.
