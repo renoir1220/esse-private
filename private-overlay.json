@@ -12,6 +12,7 @@
         ".github/release-notes-prefix.md",
         ".github/workflows/private-inheritance.yml",
         ".github/workflows/release.yml",
+        "AGENTS.md",
         "INSTALL.md",
         "LICENSE-PROPRIETARY",
         "PRIVATE-CODE-SIGNING.md",

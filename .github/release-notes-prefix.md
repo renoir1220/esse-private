@@ -1,25 +1,23 @@
 ## 简体中文
 
-### Esse 1.0.1
+### Esse 1.0.2
 
-- 本版本的 Windows 和 macOS 安装包暂未进行代码签名或 Apple 公证；发布页同时提供 SHA256 校验值。获得可信签名凭据后，后续版本会自动恢复严格的签名与公证验证。
-- Agent 批次现在按任务隔离 Prompt、参考图和请求大小。多个任务仍可并发执行，但不会再把不同任务的参考图合并进同一次图片服务请求，从而避免单任务未超限却因批次总量触发 `request body too large`。
-- 当前批次名称旁新增复制按钮，图片右键菜单新增“复制图片 ID”。用户可以把准确的 `batchId` 和 `imageId` 直接粘贴给 Agent，明确指定要修改的批次和图片。
-- 批次清理现在会等待后台写入结束，避免刚删除的批次因未完成的持久化操作在重启后重新出现。
-- 修复 `fast-uri` 的高危 URI authority 混淆漏洞，并更新桌面端构建与测试工具链，消除多项已知的开发依赖安全问题。
-- 私人版窗口标题现在始终显示为 Esse，并保留 Esse Key、托管连接、默认模型和 Agent 配置引导等私有版体验。
+- Windows 与 macOS 的图片服务请求改用独立的 Chromium 网络会话，更一致地跟随系统代理、DNS 和网络切换状态。
+- 网络故障仍不会自动重试，避免扣费状态不明时产生重复调用；在并发请求全部结束后，Esse 会刷新连接池、DNS 和代理配置，让用户下一次明确提交通常无需重启应用。
+- 网络错误现在显示 `ETIMEDOUT`、`ERR_NETWORK_CHANGED` 等脱敏诊断码，不暴露 API 地址、Key 或原始错误内容，便于判断本机网络、代理、DNS 与服务端响应问题。
+- 修复 Windows 原生标题栏预留高度导致的空白纵向滚动条；窗口左上角现在显示准确版本，例如 `Esse 1.0.2`。
+- 本版本 Windows 与 macOS 安装包未进行发布者签名或 Apple 公证；Release 同时提供 SHA256 校验值。Windows 可能显示未知发布者提示，macOS Gatekeeper 可能拒绝打开；请勿关闭系统安全机制。
 
-[查看 v1.0.0...v1.0.1 完整变更](../../compare/v1.0.0...v1.0.1)
+[查看 v1.0.1...v1.0.2 完整变更](../../compare/v1.0.1...v1.0.2)
 
 ## English
 
-### Esse 1.0.1
+### Esse 1.0.2
 
-- Windows and macOS installers in this release are not yet code-signed or Apple-notarized; SHA256 checksums are published alongside them. Strict signing and notarization verification will turn on automatically once trusted credentials become available.
-- Agent batches now isolate each job's prompt, references, and request-size budget. Independent jobs can still run concurrently, but references from different jobs are never combined into one image-service request, preventing `request body too large` when every individual job is below the limit.
-- A copy control now sits beside the active batch name, and image context menus include **Copy image ID**. Users can paste exact `batchId` and `imageId` values into an Agent conversation to identify the batch and image to modify.
-- Batch cleanup now waits for pending background writes, preventing a recently deleted batch from reappearing after restart.
-- Fixes the high-severity `fast-uri` URI authority confusion vulnerability and updates the desktop build and test toolchain to remove multiple known development-dependency security issues.
-- The private window title now consistently displays Esse while preserving the Esse Key, managed connection, default-model, and Agent setup experience.
+- Routes Windows and macOS image-service requests through an isolated Chromium network session so system proxy, DNS, and network changes are handled consistently.
+- A transport failure is still never retried automatically when the charge state may be unknown. After concurrent requests settle, Esse refreshes pooled connections, DNS, and proxy state so the next explicit submission normally does not require an app restart.
+- Network failures now expose safe diagnostic codes such as `ETIMEDOUT` and `ERR_NETWORK_CHANGED` without revealing API URLs, keys, or raw error content, making local network, proxy, DNS, and service-response issues easier to distinguish.
+- Fixes the empty vertical scrollbar caused by reserved native-titlebar height on Windows. The upper-left window title now includes the exact version, for example `Esse 1.0.2`.
+- Windows and macOS installers in this release are not publisher-signed or Apple-notarized; SHA256 checksums are published alongside them. Windows may show an unknown-publisher warning, and macOS Gatekeeper may reject the app. Do not disable platform security.
 
-[View the full v1.0.0...v1.0.1 changelog](../../compare/v1.0.0...v1.0.1)
+[View the full v1.0.1...v1.0.2 changelog](../../compare/v1.0.1...v1.0.2)

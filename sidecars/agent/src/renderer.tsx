@@ -31,9 +31,12 @@ import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
 import { blankOffering, createCustomProviderDraft, DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
 import type { BatchSnapshot, DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
+import { formatWindowTitle } from './window-title';
+import packageMetadata from '../package.json';
 import product from '../product.json';
 
 const esseIconUrl = new URL('../assets/esse.png', import.meta.url).href;
+const windowTitle = formatWindowTitle(product.displayName, packageMetadata.version);
 
 type Tab = 'batches' | 'browse' | 'settings';
 
@@ -69,7 +72,7 @@ function App() {
   const lastDesktopActivation = useRef<string | undefined>(undefined);
 
   useEffect(() => {
-    document.title = product.displayName;
+    document.title = windowTitle;
     window.esse.reportReady({ title: document.title, bridgeAvailable: typeof window.esse?.getState === 'function' });
     void window.esse.getState().then((next) => {
       setState(next);
@@ -814,7 +817,7 @@ function EmptyState({ title, copy }: { title: string; copy: string }) {
 
 function WindowTitlebar() {
   if (window.esse.platform !== 'win32') return null;
-  return <div className="window-titlebar" aria-hidden="true"><img src={esseIconUrl} alt="" /><span>{product.displayName}</span></div>;
+  return <div className="window-titlebar" aria-hidden="true"><img src={esseIconUrl} alt="" /><span>{windowTitle}</span></div>;
 }
 
 function isTerminal(batch: BatchSnapshot) { return batch.queued === 0 && batch.running === 0; }
