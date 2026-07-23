@@ -4,16 +4,16 @@
 
 **语言：简体中文 | [English](README.en.md)**
 
-Esse 是由 Agent 指挥的本地图片工作台。用户只需要说“用 Esse 生成图片”；无论安装的是 Codex Plugin 还是面向 WorkBuddy 等 Agent 的本地客户端，产品名称始终是 Esse。
+Esse 是面向 WorkBuddy 等 Agent 的私有本地图片工作台；用户只需要说“用 Esse 生成图片”。公开 Codex Plugin 由上游独立发布并显示为 `Esse Community`，私有 Agent Sidecar 显示为 `Esse`。
 
 Esse 在本机保存 Provider 配置、API Key、批次记录和原始图片。只有实际生图或改图请求会把选中的参考图发给用户配置的 Provider或当前 Agent 的图片能力。仓库和发行包不内置 API Key，也不依赖 Esse 云端后端。
 
 ## 两种发行形态
 
-- **Codex Plugin**：适用于 Codex/ChatGPT 桌面端，支持 Windows x64、macOS arm64 和 macOS x64。
+- **Esse Community Codex Plugin**：由公开上游发布，适用于 Codex/ChatGPT 桌面端，支持 Windows x64、macOS arm64 和 macOS x64。
 - **Agent Sidecar**：适用于 WorkBuddy 等支持本地 HTTP MCP 的 Agent；支持 Windows x64、macOS arm64 和 macOS x64，带完整 Esse 工作台和后台任务执行能力。
 
-这是同一个产品的两种技术分发方式，不是两个用户品牌。通常只安装适合当前 Agent 的一种。
+两个仓库共享开源行为，但发行与版本线独立。通常只安装适合当前 Agent 的一种。
 
 ## 安装 Codex Plugin
 
@@ -21,7 +21,7 @@ Esse 在本机保存 Provider 配置、API Key、批次记录和原始图片。�
 
 > 安装这个插件：https://github.com/renoir1220/esse
 
-Codex 应先阅读 [`INSTALL.md`](INSTALL.md)，再识别平台、下载 Release、校验 SHA256、完成用户目录安装和插件注册。重启桌面端并开启新任务后，说“打开 Esse 设置”，在 Esse 里配置 Provider、API Key 和默认模型。不要把 API Key 发到聊天里。
+Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/esse/blob/main/INSTALL.md)，再识别平台、下载 Esse Community Release、校验 SHA256、完成用户目录安装和插件注册。重启桌面端并开启新任务后，说“打开 Esse Community 设置”，在设置界面配置 Provider、API Key 和默认模型。不要把 API Key 发到聊天里。
 
 也可以从 [GitHub Releases](https://github.com/renoir1220/esse/releases) 下载对应平台的 Plugin ZIP，解压后运行 `install.ps1` 或 `install.sh`。
 
@@ -37,7 +37,7 @@ Codex 应先阅读 [`INSTALL.md`](INSTALL.md)，再识别平台、下载 Release
 
 ## 本地数据
 
-- Codex Plugin：Windows `%LOCALAPPDATA%\esse`；macOS `~/Library/Application Support/esse`
+- Esse Community Codex Plugin：Windows `%LOCALAPPDATA%\esse`；macOS `~/Library/Application Support/esse`
 - Agent Sidecar：Windows `%LOCALAPPDATA%\esse-agent-sidecar`；macOS `~/Library/Application Support/esse-agent-sidecar`
 
 两个目录刻意隔离，Sidecar 安装程序目录也不与任何数据目录重名。迁移仓库不会移动、覆盖或删除旧 `esse-desktop` 数据。Windows API Key 由当前用户 DPAPI 保护；macOS 使用系统 Keychain。

@@ -1,10 +1,10 @@
 # Install Esse
 
-This file is the installation contract for an Agent given only this repository URL. `Codex Plugin` and `Agent Sidecar` below are technical distribution names; after installation the product is always called Esse.
+This file is the installation contract for an Agent given only this repository URL. This private repository publishes the Agent Sidecar as **Esse**. The separately released public Codex Plugin is **Esse Community**.
 
 ## Required outcome
 
-For Codex/ChatGPT, install the Plugin from the requested Esse GitHub Release into the current user's profile, register the `esse-local` marketplace, install and enable `esse`, verify the result, then guide the user through restart and UI-only default model setup.
+For Codex/ChatGPT, install the Plugin from the public Esse Community GitHub Release into the current user's profile, register the `esse-local` marketplace, install and enable `esse`, verify the result, then guide the user through restart and UI-only default model setup. For WorkBuddy or another local HTTP MCP Agent, install the private Agent Sidecar from this repository's Release.
 
 Do not ask the user to download an archive manually. Do not ask for a Provider API key in chat. Never disable or bypass Gatekeeper.
 
@@ -59,10 +59,10 @@ After verification, report the installed version and say:
 
 1. Completely restart the Codex/ChatGPT desktop app.
 2. Start a new task.
-3. Say `打开 Esse 设置` or type `@esse` and ask it to open settings.
-4. In the Esse UI, choose `Codex 生成` as the default model, or add a Provider, paste the API Key there, test the connection, choose one of its image models, and save.
+3. Say `打开 Esse Community 设置` or type `@esse` and ask it to open settings.
+4. In the Esse Community UI, choose `Codex 生成` as the default model, or add a Provider, paste the API Key there, test the connection, choose one of its image models, and save.
 
-Explicitly remind the user that the API Key belongs only in the Esse settings UI and should never be pasted into chat.
+Explicitly remind the user that the API Key belongs only in the Esse Community settings UI and should never be pasted into chat.
 
 ## Agent Sidecar procedure
 

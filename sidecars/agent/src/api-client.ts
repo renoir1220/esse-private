@@ -59,7 +59,8 @@ export class EsseApiClient {
         : await this.openAiRequest(profile.baseUrl, apiKey, offering.providerModelId, input, images);
     } catch (error) {
       if (error instanceof EsseApiError) throw error;
-      throw new EsseApiError('图片服务网络请求失败；此次调用不会自动重试。', { code: 'network_error', chargeState: 'unknown' }, { cause: error });
+      const diagnostic = networkErrorDiagnostic(error);
+      throw new EsseApiError(`图片服务网络请求失败${diagnostic ? `（诊断码：${diagnostic}）` : ''}；此次调用不会自动重试。`, { code: 'network_error', chargeState: 'unknown' }, { cause: error });
     }
     const body = await parseResponse(response);
     if (!response.ok) throw providerError(response, body);
@@ -170,6 +171,26 @@ function sanitize(value: string): string {
     .replace(/https?:\/\/api\.tu-zi\.com/gi, 'Esse 服务')
     .replace(/tu-?zi|兔子/gi, 'Esse')
     .slice(0, 800);
+}
+
+function networkErrorDiagnostic(error: unknown): string | undefined {
+  const pending = [error];
+  const visited = new Set<unknown>();
+  while (pending.length) {
+    const candidate = pending.shift();
+    if (!candidate || visited.has(candidate)) continue;
+    visited.add(candidate);
+    if (candidate instanceof Error) {
+      const record = candidate as Error & { code?: unknown; cause?: unknown; errors?: unknown };
+      if (typeof record.code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(record.code)) return record.code;
+      const chromiumCode = /\bnet::(ERR_[A-Z0-9_]+)\b/.exec(candidate.message)?.[1];
+      if (chromiumCode) return chromiumCode;
+      if (record.cause) pending.push(record.cause);
+      if (Array.isArray(record.errors)) pending.push(...record.errors);
+      if (candidate.name === 'TimeoutError' || candidate.name === 'AbortError') return candidate.name;
+    }
+  }
+  return undefined;
 }
 
 function mimeFor(filePath: string): string {

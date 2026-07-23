@@ -1,4 +1,4 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, net, protocol, session, shell } from 'electron';
 import { copyFile, mkdir, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -16,10 +16,12 @@ import { DEFAULT_MCP_PORT, startDesktopMcpServer, type RunningDesktopMcpServer }
 import { PENDING_TASK_HOVER_DELAY_MS } from './pending-task-peek';
 import { ProviderSettingsStore } from './provider-settings';
 import { DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
+import { ProviderNetworkTransport } from './provider-network';
 import { WORKBUDDY_AGENT_OFFERING, type DesktopState, type ModifyBatchInput, type SaveProviderInput } from './types';
 import { desktopWindowChrome, shouldRemoveWindowMenu } from './window-chrome';
 import { resolveSidecarUserDataPath, shouldQuitWhenAllWindowsClose } from './platform';
 import { batchReferenceText, imageIdReferenceText } from './reference-text';
+import { formatWindowTitle } from './window-title';
 import product from '../product.json';
 
 const smokeMode = process.env.ESSE_SMOKE_TEST === '1';
@@ -49,6 +51,7 @@ if (smokeMode || qaCapturePath) app.disableHardwareAcceleration();
 let mainWindow: BrowserWindow | undefined;
 let credentialStore: CredentialStore;
 let providerSettings: ProviderSettingsStore;
+let providerNetwork: ProviderNetworkTransport;
 let imageStore: ImageStore;
 let batchManager: BatchManager;
 let desktopSettings: DesktopSettingsStore;
@@ -74,6 +77,7 @@ app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   credentialStore = new CredentialStore(userData);
   providerSettings = new ProviderSettingsStore(path.join(userData, 'providers.json'), credentialStore);
+  providerNetwork = new ProviderNetworkTransport(session.fromPartition('esse-provider-network', { cache: false }));
   imageStore = new ImageStore(userData);
   desktopSettings = new DesktopSettingsStore(path.join(userData, 'settings.json'));
   mcpPairingStore = new McpPairingStore(userData);
@@ -95,12 +99,13 @@ app.whenReady().then(async () => {
 });
 
 function createWindow(): void {
+  const windowTitle = formatWindowTitle(product.displayName, app.getVersion());
   mainWindow = new BrowserWindow({
     width: qaViewport?.width ?? 1320,
     height: qaViewport?.height ?? 860,
     minHeight: qaViewport ? 640 : 640,
     show: !smokeMode && !qaCapturePath,
-    title: product.displayName,
+    title: windowTitle,
     icon: resolveRuntimeIconPath(),
     backgroundColor: '#ffffff',
     ...desktopWindowChrome(process.platform),
@@ -189,8 +194,12 @@ function createWindow(): void {
             if (!overlayResult.batchPicker || !overlayResult.headerMenu || !overlayResult.lightboxMask || !overlayResult.finalOverlaysClosed) throw new Error(`Overlay dismissal assertion failed: ${JSON.stringify(overlayResult)}`);
             console.log(`ESSE_QA_OVERLAYS=${JSON.stringify(overlayResult)}`);
           }
-          const renderedState = await mainWindow.webContents.executeJavaScript("JSON.stringify({ bridge: typeof window.esse, shell: Boolean(document.querySelector('.app-shell')), connect: Boolean(document.querySelector('.connect-screen')), splash: Boolean(document.querySelector('.splash')), pendingPeek: Boolean(document.querySelector('.pending-task-peek')), images: Array.from(document.images).map((image) => ({ complete: image.complete, width: image.naturalWidth })), thumbnails: Array.from(document.querySelectorAll('.image-card-stage')).map((element) => { const rect = element.getBoundingClientRect(); return { width: Math.round(rect.width), height: Math.round(rect.height) }; }) })");
+          const renderedState = await mainWindow.webContents.executeJavaScript("JSON.stringify({ bridge: typeof window.esse, shell: Boolean(document.querySelector('.app-shell')), connect: Boolean(document.querySelector('.connect-screen')), splash: Boolean(document.querySelector('.splash')), pendingPeek: Boolean(document.querySelector('.pending-task-peek')), images: Array.from(document.images).map((image) => ({ complete: image.complete, width: image.naturalWidth })), thumbnails: Array.from(document.querySelectorAll('.image-card-stage')).map((element) => { const rect = element.getBoundingClientRect(); return { width: Math.round(rect.width), height: Math.round(rect.height) }; }), layout: { batchPage: Boolean(document.querySelector('.batch-page')), viewportHeight: window.innerHeight, documentHeight: document.documentElement.scrollHeight, verticalOverflow: document.documentElement.scrollHeight > window.innerHeight } })");
           console.log(`ESSE_QA_STATE=${renderedState}`);
+          const layout = (JSON.parse(renderedState) as { layout?: { batchPage?: boolean; verticalOverflow?: boolean } }).layout;
+          if (layout?.batchPage && layout.verticalOverflow) {
+            throw new Error('Unexpected root-page vertical overflow in the batch workspace.');
+          }
           mainWindow.webContents.invalidate();
           await new Promise((resolve) => setTimeout(resolve, 250));
           const image = qaCaptureClipHeight && qaViewport
@@ -220,7 +229,7 @@ function registerIpc(): void {
   ipcMain.handle('state:get', () => loadState());
   ipcMain.handle('esse-key:connect', async (_event, apiKey: unknown) => {
     if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('请输入 Esse Key。');
-    await providerSettings.testEsseKey(apiKey);
+    await providerSettings.testEsseKey(apiKey, providerNetwork.fetch);
     await providerSettings.saveEsseKey(apiKey);
     const currentDefault = await desktopSettings.getDefaultOfferingId();
     if (!currentDefault) {
@@ -257,7 +266,7 @@ function registerIpc(): void {
     }
     return loadState();
   });
-  ipcMain.handle('providers:test', async (_event, input: { baseUrl: string; profileId?: string; apiKey?: string }) => providerSettings.testProvider(input));
+  ipcMain.handle('providers:test', async (_event, input: { baseUrl: string; profileId?: string; apiKey?: string }) => providerSettings.testProvider(input, providerNetwork.fetch));
   ipcMain.handle('batches:modify', async (_event, input: ModifyBatchInput) => {
     await batchManager.modify(input);
     return loadState();
@@ -478,7 +487,7 @@ async function broadcastState(): Promise<void> {
 }
 
 async function createApiClient(): Promise<EsseApiClient> {
-  return new EsseApiClient(providerSettings);
+  return new EsseApiClient(providerSettings, providerNetwork.fetch);
 }
 
 function requiredId(value: unknown, kind: string): string {

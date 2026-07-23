@@ -10,7 +10,7 @@ describe('desktop product profile', () => {
     expect(packageJson.name).toBe('@esse/desktop');
     expect(packageJson.private).toBe(true);
     expect(packageJson.productName).toBe(product.displayName);
-    expect(packageJson.version).toBe('1.0.1');
+    expect(packageJson.version).toBe('1.0.2');
   });
 
   it('keeps the Esse installer and runtime identities isolated', () => {
