@@ -18,6 +18,8 @@ npm run typecheck
 npm test
 ```
 
+Any pull request that carries an `upstream/main` merge must itself be merged with GitHub's **Create a merge commit** strategy. Squash or rebase merging discards the upstream parent relationship even when the resulting files look identical, and will make `verify-private-overlay.mjs` fail on `main`.
+
 The verifier requires the current `upstream/main` to be an ancestor of the private commit and rejects every changed path outside the reviewed overlay. A shared change must therefore land in Community first; adding a new overlay path is an architecture decision, not a conflict-resolution shortcut.
 
 Never push private commits to `upstream`. Configure a separate private `origin` before publishing this repository.
