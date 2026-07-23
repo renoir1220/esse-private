@@ -6,5 +6,6 @@
   "windowsSquirrelAppId": "esse-agent-sidecar-app",
   "windowsSetupExe": "Esse-Setup.exe",
   "macosAppBundleId": "com.renoir.esse.agent-sidecar",
-  "releasePrefix": "esse"
+  "releasePrefix": "esse",
+  "releaseVersionPolicy": "independent-sidecar"
 }

@@ -78,7 +78,7 @@ Verify the asset SHA256 against the matching `*Sha256` field before opening it. 
 
 ### Windows x64
 
-Run the verified `.exe` installer. `v0.3.0` was an explicitly unsigned exception while SignPath Foundation approval was pending, so report that historical publisher limitation honestly; never disable Windows security controls. Releases after `v0.3.0` must pass the repository Authenticode gate.
+Run the verified `.exe` installer. Every formal private release must pass the repository Authenticode gate for both the application and installer. If Windows reports a missing or invalid publisher signature, stop and report the exact error; never disable Windows security controls.
 
 ### macOS arm64 and x64
 

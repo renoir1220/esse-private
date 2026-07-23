@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "repository": "https://github.com/renoir1220/esse.git",
+    "branch": "main"
+  },
+  "overlayGroups": [
+    {
+      "name": "private-governance-and-release",
+      "reason": "Private licensing, installation, bilingual release notes, signed Sidecar-only release automation, and the inheritance verifier.",
+      "paths": [
+        ".github/release-notes-prefix.md",
+        ".github/workflows/private-inheritance.yml",
+        ".github/workflows/release.yml",
+        "INSTALL.md",
+        "LICENSE-PROPRIETARY",
+        "PRIVATE-CODE-SIGNING.md",
+        "PRIVATE-DOWNSTREAM.md",
+        "README.en.md",
+        "README.md",
+        "SYNC.md",
+        "docs/roadmap.md",
+        "private-overlay.json",
+        "scripts/create-private-release-metadata.mjs",
+        "scripts/verify-private-overlay.mjs",
+        "sidecars/agent/README.md"
+      ]
+    },
+    {
+      "name": "private-product-profile",
+      "reason": "Independent package identity, version, installer names, application-data paths, and release asset prefix.",
+      "paths": [
+        "sidecars/agent/package-lock.json",
+        "sidecars/agent/package.json",
+        "sidecars/agent/product.json",
+        "sidecars/agent/src/product.test.ts"
+      ]
+    },
+    {
+      "name": "managed-service-runtime",
+      "reason": "Confidential managed connection, credential migration, error redaction, concurrency, and onboarding state.",
+      "paths": [
+        "sidecars/agent/src/api-client.ts",
+        "sidecars/agent/src/batch-manager.ts",
+        "sidecars/agent/src/desktop-settings.test.ts",
+        "sidecars/agent/src/desktop-settings.ts",
+        "sidecars/agent/src/main.ts",
+        "sidecars/agent/src/onboarding-state.test.ts",
+        "sidecars/agent/src/onboarding-state.ts",
+        "sidecars/agent/src/preload.ts",
+        "sidecars/agent/src/provider-catalog.test.ts",
+        "sidecars/agent/src/provider-catalog.ts",
+        "sidecars/agent/src/provider-settings.test.ts",
+        "sidecars/agent/src/provider-settings.ts",
+        "sidecars/agent/src/types.ts"
+      ]
+    },
+    {
+      "name": "managed-desktop-experience",
+      "reason": "Private first-run onboarding, Esse Key workflow, managed model settings, private styling, and edition-specific UI contracts.",
+      "paths": [
+        "sidecars/agent/src/community-ui-contract.test.ts",
+        "sidecars/agent/src/index.css",
+        "sidecars/agent/src/managed-ui-contract.test.ts",
+        "sidecars/agent/src/renderer.tsx"
+      ]
+    }
+  ]
+}

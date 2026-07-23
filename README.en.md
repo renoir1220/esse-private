@@ -42,7 +42,7 @@ The directories are intentionally isolated, and the Sidecar installer never owns
 
 ## Code signing
 
-Signed Agent Sidecar artifacts follow the public [Code signing policy](CODE_SIGNING.md). Windows releases verify Authenticode on the application and installer; macOS releases verify Developer ID signing, Apple notarization, and the stapled ticket. The maintainer explicitly allowed `v0.3.0-alpha.2` and `v0.3.0` as unsigned Windows exceptions. Later releases remain protected by the signature gates.
+Formal private Agent Sidecar artifacts follow the separate [private release signing policy](PRIVATE-CODE-SIGNING.md); the public Community SignPath policy does not cover proprietary source. Windows releases must verify Authenticode on the application and installer, while macOS releases must verify Developer ID signing, Apple notarization, Gatekeeper, and the stapled ticket. Private formal releases have no unsigned exception.
 
 ## Repository layout
 

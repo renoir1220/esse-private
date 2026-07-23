@@ -374,6 +374,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .task-detail-dialog { max-height: calc(100vh - 24px); }
 }
 @media (max-width: 480px) {
+  .image-grid, .batch-workspace.is-single .image-grid { grid-template-columns: minmax(0, 1fr); }
+  .image-card { max-width: var(--gallery-thumbnail-size); }
   .modify-toolbar { align-items: stretch; flex-wrap: wrap; }
   .model-select { max-width: 100%; }
   .composer-actions { width: 100%; }
