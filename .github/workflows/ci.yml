@@ -90,7 +90,8 @@ jobs:
           } else {
             git remote add upstream $upstream
           }
-          git fetch --no-tags upstream $branch
+          $refspec = "+refs/heads/$($branch):refs/remotes/upstream/$($branch)"
+          git fetch --no-tags upstream $refspec
       - run: node scripts/verify-private-overlay.mjs upstream/main
 
   verify-windows:
