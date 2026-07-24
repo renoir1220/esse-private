@@ -1,8 +1,8 @@
 # Esse Private Self-hosted Runners
 
-This repository prefers repository-scoped self-hosted runners for ordinary CI
-and uses GitHub-hosted runners only when a required machine is offline or when
-the workflow is explicitly forced to hosted mode.
+This repository runs ordinary CI directly on repository-scoped self-hosted
+runners. GitHub-hosted runners are used only when a maintainer explicitly
+dispatches the workflow in hosted mode.
 
 ## Runner inventory
 
@@ -16,13 +16,11 @@ the common custom label `esse-private` and the target-specific label above.
 Register each runner against `renoir1220/esse-private`, not at organization
 scope.
 
-The CI router uses a small GitHub-hosted job and the workflow `GITHUB_TOKEN` to
-read repository runner status. An online runner is selected even when it is
-busy, so jobs queue on owned hardware instead of consuming hosted minutes. If
-no matching runner is online, CI selects `windows-latest` or `macos-15`.
-Explicit `runner_mode=self` dispatches route on the Windows runner as well,
-which allows owned-hardware validation while hosted Actions billing is
-temporarily unavailable.
+GitHub does not automatically switch an already queued job to another runner
+class. If a required owned runner is offline, the job remains queued until the
+runner returns or a maintainer cancels it and explicitly dispatches the hosted
+fallback. This deliberate manual boundary keeps ordinary CI independent of
+GitHub-hosted billing and avoids a custom runner-status control plane.
 
 ## Security boundary
 
@@ -139,10 +137,10 @@ esse-private 和 esse-private-macos-arm64，以当前低权限用户的 launchd
 run_macos=true 的 CI，等待 macOS ARM64 检查结束后给我 workflow 链接和结果。
 ```
 
-## Manual routing and recovery
+## Manual routing and hosted fallback
 
-CI normally uses `runner_mode=auto`. Maintainers can explicitly test owned
-hardware:
+Pull requests and pushes to `main` use the owned runners directly. Maintainers
+can also explicitly test owned hardware:
 
 ```powershell
 gh workflow run ci.yml --repo renoir1220/esse-private `
@@ -151,14 +149,16 @@ gh workflow run ci.yml --repo renoir1220/esse-private `
   -f run_macos=true
 ```
 
-Use `runner_mode=hosted` to bypass both owned runners. When manually testing
-Windows before the Mac is registered, set `run_macos=false`.
+If an owned runner is unavailable, explicitly dispatch GitHub-hosted fallback:
 
-GitHub evaluates the runner status before target jobs are queued. A runner that
-disconnects after routing can still leave a job queued. In that rare case,
-cancel the run and dispatch it again with `runner_mode=hosted`.
+```powershell
+gh workflow run ci.yml --repo renoir1220/esse-private `
+  --ref <branch> `
+  -f runner_mode=hosted `
+  -f run_macos=true
+```
 
-Automatic fallback requires GitHub to start the small routing job. If Actions
-is blocked at the account level by a payment failure or spending limit, use
-explicit `runner_mode=self` until billing is restored; GitHub-hosted fallback
-cannot start while GitHub itself rejects hosted jobs.
+When testing Windows before the Mac is registered, set `run_macos=false`.
+The shared per-branch concurrency key cancels an older queued or running CI
+attempt when the replacement dispatch starts.
+GitHub-hosted fallback still requires a valid Actions billing allowance.

@@ -7,12 +7,11 @@ on:
   workflow_dispatch:
     inputs:
       runner_mode:
-        description: Select runners automatically or force one runner class
+        description: Use owned runners or explicitly fall back to GitHub-hosted runners
         required: true
-        default: auto
+        default: self
         type: choice
         options:
-          - auto
           - self
           - hosted
       run_macos:
@@ -22,55 +21,16 @@ on:
         type: boolean
 
 concurrency:
-  group: private-ci-${{ github.event.pull_request.number || github.ref }}
+  group: private-ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  route:
-    name: Select runners
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'self' && fromJSON('["self-hosted","esse-private-windows-x64"]') || 'ubuntu-slim' }}
-    outputs:
-      windows_runs_on: ${{ steps.windows.outputs.windows_runs_on }}
-      windows_selection: ${{ steps.windows.outputs.windows_selection }}
-      windows_reason: ${{ steps.windows.outputs.windows_reason }}
-      macos_runs_on: ${{ steps.macos.outputs.macos_runs_on }}
-      macos_selection: ${{ steps.macos.outputs.macos_selection }}
-      macos_reason: ${{ steps.macos.outputs.macos_reason }}
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-      - name: Select Windows runner
-        id: windows
-        env:
-          RUNNER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode || 'auto' }}
-          RUNNER_LABEL: esse-private-windows-x64
-          SELF_HOSTED_RUNS_ON_JSON: '["self-hosted","esse-private-windows-x64"]'
-          HOSTED_RUNS_ON_JSON: '"windows-latest"'
-          OUTPUT_PREFIX: windows
-          RUNNER_ROUTER_TOKEN: ${{ github.token }}
-        run: node scripts/select-ci-runner.mjs
-      - name: Select Apple Silicon runner
-        id: macos
-        env:
-          RUNNER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode || 'auto' }}
-          RUNNER_LABEL: esse-private-macos-arm64
-          SELF_HOSTED_RUNS_ON_JSON: '["self-hosted","esse-private-macos-arm64"]'
-          HOSTED_RUNS_ON_JSON: '"macos-15"'
-          OUTPUT_PREFIX: macos
-          RUNNER_ROUTER_TOKEN: ${{ github.token }}
-        run: node scripts/select-ci-runner.mjs
-
   verify-private-overlay:
     name: Verify private inheritance
-    needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.windows_runs_on) }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -96,8 +56,7 @@ jobs:
 
   verify-windows:
     name: Verify Windows x64
-    needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.windows_runs_on) }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -105,10 +64,6 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
-          cache: ${{ needs.route.outputs.windows_selection == 'hosted' && 'npm' || '' }}
-          cache-dependency-path: |
-            plugins/codex/package-lock.json
-            sidecars/agent/package-lock.json
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.11
@@ -157,8 +112,7 @@ jobs:
   verify-macos-arm64:
     name: Verify macOS ARM64
     if: github.event_name != 'workflow_dispatch' || inputs.run_macos
-    needs: route
-    runs-on: ${{ fromJSON(needs.route.outputs.macos_runs_on) }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'macos-15' || fromJSON('["self-hosted","esse-private-macos-arm64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -166,10 +120,6 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
-          cache: ${{ needs.route.outputs.macos_selection == 'hosted' && 'npm' || '' }}
-          cache-dependency-path: |
-            plugins/codex/package-lock.json
-            sidecars/agent/package-lock.json
       - name: Install Agent Sidecar dependencies
         working-directory: sidecars/agent
         run: npm ci

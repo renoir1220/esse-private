@@ -24,8 +24,6 @@
         "docs/roadmap.md",
         "private-overlay.json",
         "scripts/create-private-release-metadata.mjs",
-        "scripts/select-ci-runner.mjs",
-        "scripts/select-ci-runner.test.mjs",
         "scripts/verify-private-overlay.mjs",
         "sidecars/agent/README.md"
       ]
