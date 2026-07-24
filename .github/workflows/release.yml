@@ -1,4 +1,4 @@
-name: Esse desktop release
+name: Esse release build
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag matching the desktop package version
+        description: Existing release tag matching the private Sidecar version
         required: true
         type: string
       runner_mode:
@@ -47,12 +47,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
       - run: npm ci
       - name: Verify independent Esse tag on Windows
         if: matrix.platform == 'windows'
+        id: identity-windows
         shell: powershell
         run: |
           $packageVersion = node -p "require('./package.json').version"
@@ -67,14 +69,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Release tag $env:RELEASE_TAG is not an ancestor of origin/main."
           }
+          "commit=$tagCommit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - name: Verify independent Esse tag on macOS
         if: matrix.platform == 'macos'
+        id: identity-macos
         shell: bash
         run: |
           package_version="$(node -e "process.stdout.write(require('./package.json').version)")"
           test "$RELEASE_TAG" = "v$package_version"
           tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
           git merge-base --is-ancestor "$tag_commit" origin/main
+          echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
+      - name: Export release commit
+        id: identity
+        shell: bash
+        env:
+          WINDOWS_COMMIT: ${{ steps.identity-windows.outputs.commit }}
+          MACOS_COMMIT: ${{ steps.identity-macos.outputs.commit }}
+        run: |
+          commit="${WINDOWS_COMMIT:-$MACOS_COMMIT}"
+          test -n "$commit"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - run: npm run typecheck
       - run: npm test
       - name: Resolve Windows signing mode
@@ -205,52 +220,20 @@ jobs:
         shell: bash
         run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
       - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Bind staged asset to tag and commit
+        working-directory: ../..
+        run: >-
+          node scripts/create-private-release-provenance.mjs
+          ${{ env.RELEASE_TAG }}
+          ${{ steps.identity.outputs.commit }}
+          ${{ matrix.platform }}
+          ${{ matrix.arch }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: esse-${{ matrix.platform }}-${{ matrix.arch }}
-          path: release/esse-${{ matrix.platform }}-${{ matrix.arch }}-v*
+          name: esse-release-${{ matrix.platform }}-${{ matrix.arch }}-${{ steps.identity.outputs.commit }}
+          path: |
+            release/esse-${{ matrix.platform }}-${{ matrix.arch }}-v*
+            release/provenance-${{ matrix.platform }}-${{ matrix.arch }}.json
           if-no-files-found: error
-
-  publish:
-    needs: package
-    runs-on:
-      - self-hosted
-      - esse-private-windows-x64
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: esse-*
-          path: release
-          merge-multiple: true
-      - name: Create checksums and Sidecar metadata
-        shell: powershell
-        run: node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG
-      - name: Publish Esse release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: powershell
-        run: |
-          $assets = @(Get-ChildItem -LiteralPath 'release' -File | Sort-Object Name)
-          if ($assets.Count -eq 0) {
-            throw 'No release assets were downloaded.'
-          }
-          $ghArgs = @('release', 'create', $env:RELEASE_TAG)
-          $ghArgs += @($assets | ForEach-Object { $_.FullName })
-          $ghArgs += @(
-            '--repo', $env:GITHUB_REPOSITORY,
-            '--verify-tag',
-            '--title', "Esse $env:RELEASE_TAG",
-            '--notes-file', '.github/release-notes-prefix.md'
-          )
-          if ($env:RELEASE_TAG -like '*-*') {
-            $ghArgs += '--prerelease'
-          }
-          & gh @ghArgs
-          if ($LASTEXITCODE -ne 0) {
-            throw "gh release create failed with exit code $LASTEXITCODE."
-          }
+          compression-level: 0
+          retention-days: 30

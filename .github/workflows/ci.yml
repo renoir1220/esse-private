@@ -14,8 +14,16 @@ on:
         options:
           - self
           - hosted
+      validation_scope:
+        description: Run full packaging checks or classify the branch diff automatically
+        required: true
+        default: full
+        type: choice
+        options:
+          - full
+          - auto
       run_macos:
-        description: Run the Apple Silicon macOS checks
+        description: Run the Apple Silicon macOS checks when full validation is required
         required: true
         default: true
         type: boolean
@@ -25,11 +33,82 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
 
 jobs:
+  classify:
+    name: Classify validation scope
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
+    outputs:
+      full_required: ${{ steps.paths.outputs.full_required }}
+      full_validation: ${{ steps.scope.outputs.full_validation }}
+      reused_run_id: ${{ steps.reuse.outputs.source_run_id }}
+      tree: ${{ steps.identity.outputs.tree }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve changed paths
+        id: paths
+        shell: powershell
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          DISPATCH_SCOPE: ${{ inputs.validation_scope }}
+        run: |
+          if ($env:EVENT_NAME -eq 'workflow_dispatch' -and $env:DISPATCH_SCOPE -eq 'full') {
+            node scripts/classify-private-ci.mjs --force-full
+            exit $LASTEXITCODE
+          }
+          if ($env:EVENT_NAME -eq 'pull_request') {
+            node scripts/classify-private-ci.mjs --base $env:PR_BASE_SHA --head $env:PR_HEAD_SHA
+            exit $LASTEXITCODE
+          }
+          if ($env:EVENT_NAME -eq 'push') {
+            node scripts/classify-private-ci.mjs --base $env:PUSH_BASE_SHA --head $env:GITHUB_SHA
+            exit $LASTEXITCODE
+          }
+          git fetch --no-tags origin main
+          $base = git merge-base origin/main HEAD
+          node scripts/classify-private-ci.mjs --base $base --head HEAD
+          exit $LASTEXITCODE
+      - name: Resolve checked-out tree
+        id: identity
+        shell: powershell
+        run: |
+          $tree = git rev-parse 'HEAD^{tree}'
+          "tree=$tree" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - name: Find reusable full validation
+        id: reuse
+        if: github.event_name == 'push' && github.ref_name == 'main' && steps.paths.outputs.full_required == 'true'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/find-reusable-full-validation.mjs ${{ steps.identity.outputs.tree }}
+      - name: Select validation tier
+        id: scope
+        shell: powershell
+        env:
+          FULL_REQUIRED: ${{ steps.paths.outputs.full_required }}
+          REUSABLE: ${{ steps.reuse.outputs.reusable }}
+          REUSED_RUN_ID: ${{ steps.reuse.outputs.source_run_id }}
+        run: |
+          $runFull = $env:FULL_REQUIRED -eq 'true' -and $env:REUSABLE -ne 'true'
+          "full_validation=$($runFull.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          if ($env:REUSABLE -eq 'true') {
+            Write-Output "Reusing exact-tree full validation from workflow run $env:REUSED_RUN_ID."
+          } elseif ($runFull) {
+            Write-Output "Full package validation is required."
+          } else {
+            Write-Output "Fast validation is sufficient for this change set."
+          }
+
   verify-private-overlay:
     name: Verify private inheritance
+    needs: classify
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -56,6 +135,7 @@ jobs:
 
   verify-windows:
     name: Verify Windows x64
+    needs: classify
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -67,24 +147,48 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.11
+      - name: Verify CI and release policy scripts
+        shell: powershell
+        run: |
+          node --test scripts/classify-private-ci.test.mjs scripts/find-reusable-full-validation.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-private-release-pipeline.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\scripts\publish-private-release.ps1))
+          & .\scripts\test-publish-private-release.ps1
+          $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\install.ps1))
+          bash -n ./install.sh
       - name: Install Codex Plugin dependencies
         working-directory: plugins/codex
         run: npm ci
-      - name: Verify Codex Plugin
+      - name: Verify Codex Plugin source
         working-directory: plugins/codex
-        run: npm run check
+        run: |
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Verify Codex Plugin runtime
+        if: needs.classify.outputs.full_validation == 'true'
+        working-directory: plugins/codex
+        run: |
+          npm run selftest
+          npm run smoke:stdio
+          npm run smoke:multi-stdio
+          npm run smoke:core-survival
+          npm run smoke:core-crash
+          npm run verify:release
       - name: Record Windows cold/warm thumbnail benchmark
+        if: needs.classify.outputs.full_validation == 'true'
         working-directory: plugins/codex
         run: npm run benchmark:thumbnails
       - name: Package Windows Codex Plugin
+        if: needs.classify.outputs.full_validation == 'true'
         working-directory: plugins/codex
         run: node scripts/package-releases.mjs --target windows-x64
       - name: Run Windows installation user-path E2E
+        if: needs.classify.outputs.full_validation == 'true'
         working-directory: plugins/codex
         run: npm run e2e:windows
-      - name: Parse Windows installer
-        shell: powershell
-        run: $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\install.ps1))
       - name: Install Agent Sidecar dependencies
         working-directory: sidecars/agent
         run: npm ci
@@ -95,9 +199,11 @@ jobs:
           npm run lint
           npm test
       - name: Build Agent Sidecar installer
+        if: needs.classify.outputs.full_validation == 'true'
         working-directory: sidecars/agent
         run: npm run make
       - name: Verify Agent Sidecar installer
+        if: needs.classify.outputs.full_validation == 'true'
         working-directory: sidecars/agent
         shell: powershell
         run: |
@@ -111,7 +217,8 @@ jobs:
 
   verify-macos-arm64:
     name: Verify macOS ARM64
-    if: github.event_name != 'workflow_dispatch' || inputs.run_macos
+    needs: classify
+    if: needs.classify.outputs.full_validation == 'true' && (github.event_name != 'workflow_dispatch' || inputs.run_macos)
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'macos-15' || fromJSON('["self-hosted","esse-private-macos-arm64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -137,10 +244,11 @@ jobs:
       - name: Install Codex Plugin dependencies
         working-directory: plugins/codex
         run: npm ci
-      - name: Verify Codex Plugin
+      - name: Verify Codex Plugin on macOS
         working-directory: plugins/codex
         run: |
-          npm run check
+          npm run build
+          npm run selftest
           npm run benchmark:thumbnails
           node scripts/package-releases.mjs --target macos-arm64
       - name: Verify macOS installer syntax
@@ -179,3 +287,45 @@ jobs:
             /bin/bash "$extracted/install.sh"
           cmp "$installed_widget" "$extracted/plugins/esse/mcp/widget.html"
           test "$(find "$install_root/versions" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 1
+
+  record-full-validation:
+    name: Record exact-tree full validation
+    needs:
+      - classify
+      - verify-private-overlay
+      - verify-windows
+      - verify-macos-arm64
+    if: >-
+      always() &&
+      needs.classify.outputs.full_validation == 'true' &&
+      needs.verify-private-overlay.result == 'success' &&
+      needs.verify-windows.result == 'success' &&
+      needs.verify-macos-arm64.result == 'success'
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - name: Create exact-tree validation receipt
+        id: receipt
+        shell: powershell
+        run: |
+          $tree = git rev-parse 'HEAD^{tree}'
+          $receipt = @{
+            schemaVersion = 1
+            repository = $env:GITHUB_REPOSITORY
+            workflowRunId = $env:GITHUB_RUN_ID
+            commit = (git rev-parse HEAD)
+            tree = $tree
+            targets = @('windows-x64', 'macos-arm64')
+          } | ConvertTo-Json
+          $receiptPath = Join-Path $env:RUNNER_TEMP 'full-validation.json'
+          $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
+          "tree=$tree" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "receipt=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: esse-private-full-validation-${{ steps.receipt.outputs.tree }}
+          path: ${{ steps.receipt.outputs.receipt }}
+          if-no-files-found: error
+          retention-days: 30

@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const releaseRoot = path.join(repositoryRoot, "release");
+const releaseRoot = process.argv[3]
+  ? path.resolve(process.argv[3])
+  : path.join(repositoryRoot, "release");
 const packageJson = JSON.parse(await readFile(path.join(repositoryRoot, "sidecars", "agent", "package.json"), "utf8"));
 const product = JSON.parse(await readFile(path.join(repositoryRoot, "sidecars", "agent", "product.json"), "utf8"));
 const expectedTag = process.argv[2];
