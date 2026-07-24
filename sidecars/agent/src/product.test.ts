@@ -31,6 +31,9 @@ describe('desktop product profile', () => {
     expect(workflow).toContain('esse-private-windows-x64');
     expect(workflow).toContain('esse-private-macos-arm64');
     expect(workflow).toContain("inputs.runner_mode == 'hosted'");
+    expect(workflow).toContain('Verify independent Esse tag on Windows');
+    expect(workflow).toContain('Verify independent Esse tag on macOS');
+    expect(workflow).toContain('shell: pwsh');
   });
 
   it('hides upstream Provider identity from private error surfaces', () => {

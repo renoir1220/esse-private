@@ -57,10 +57,28 @@ jobs:
           cache: npm
           cache-dependency-path: sidecars/agent/package-lock.json
       - run: npm ci
-      - name: Verify independent Esse tag
+      - name: Verify independent Esse tag on Windows
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $packageVersion = node -p "require('./package.json').version"
+          if ($env:RELEASE_TAG -ne "v$packageVersion") {
+            throw "Release tag $env:RELEASE_TAG does not match package version $packageVersion."
+          }
+          $tagCommit = git rev-list -n 1 $env:RELEASE_TAG
+          if ([string]::IsNullOrWhiteSpace($tagCommit)) {
+            throw "Release tag $env:RELEASE_TAG does not resolve to a commit."
+          }
+          git merge-base --is-ancestor $tagCommit origin/main
+          if ($LASTEXITCODE -ne 0) {
+            throw "Release tag $env:RELEASE_TAG is not an ancestor of origin/main."
+          }
+      - name: Verify independent Esse tag on macOS
+        if: matrix.platform == 'macos'
         shell: bash
         run: |
-          test "$RELEASE_TAG" = "v$(node -p "require('./package.json').version")"
+          package_version="$(node -e "process.stdout.write(require('./package.json').version)")"
+          test "$RELEASE_TAG" = "v$package_version"
           tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
           git merge-base --is-ancestor "$tag_commit" origin/main
       - run: npm run typecheck
