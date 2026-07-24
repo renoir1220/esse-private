@@ -50,10 +50,28 @@ require_square_icon_size 256 "$iconset"
 require_square_icon_size 1024 "$iconset"
 printf 'Verified Esse icon frames at 16px, 256px, and 1024px.\n'
 
+/usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
+signature_details="$(/usr/bin/codesign -dvvv "$app" 2>&1)"
+framework_binary="$app/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"
 if test "$require_signed" = "--require-signed"; then
-  /usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
+  if printf '%s\n' "$signature_details" | /usr/bin/grep -q '^Signature=adhoc$'; then
+    echo "Expected a Developer ID signature, got an ad-hoc signature." >&2
+    exit 1
+  fi
   /usr/sbin/spctl --assess --type execute --verbose=2 "$app"
   /usr/bin/xcrun stapler validate "$app"
+  printf 'Verified Developer ID signature, Gatekeeper assessment, and notarization ticket.\n'
+else
+  if ! printf '%s\n' "$signature_details" | /usr/bin/grep -q '^Signature=adhoc$'; then
+    echo "Expected a structurally valid ad-hoc signature when Developer ID credentials are absent." >&2
+    exit 1
+  fi
+  framework_signature_details="$(/usr/bin/codesign -dvvv "$framework_binary" 2>&1)"
+  if ! printf '%s\n' "$framework_signature_details" | /usr/bin/grep -q '^Signature=adhoc$'; then
+    echo "Expected the embedded Electron Framework to share the app's ad-hoc signature mode." >&2
+    exit 1
+  fi
+  printf 'Verified structurally valid ad-hoc signature.\n'
 fi
 
 smoke_root="$(mktemp -d)"
@@ -71,7 +89,19 @@ if kill -0 "$smoke_pid" 2>/dev/null; then
   echo "Packaged macOS app smoke test timed out." >&2
   exit 1
 fi
+set +e
 wait "$smoke_pid"
-/usr/bin/grep -q 'ESSE_SMOKE_RESULT={"ok":true' "$smoke_log"
+smoke_status=$?
+set -e
+if test "$smoke_status" -ne 0; then
+  cat "$smoke_log" >&2
+  echo "Packaged macOS app smoke test exited with status $smoke_status." >&2
+  exit "$smoke_status"
+fi
+if ! /usr/bin/grep -q 'ESSE_SMOKE_RESULT={"ok":true' "$smoke_log"; then
+  cat "$smoke_log" >&2
+  echo "Packaged macOS app smoke test did not report success." >&2
+  exit 1
+fi
 
 printf '{"status":"ok","platform":"macos","arch":"%s","bundleId":"%s","icon":"Esse","smoke":"ok"}\n' "$arch" "$bundle_id"

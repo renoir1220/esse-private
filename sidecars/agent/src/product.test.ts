@@ -11,7 +11,7 @@ describe('desktop product profile', () => {
     expect(packageJson.name).toBe('@esse/desktop');
     expect(packageJson.private).toBe(true);
     expect(packageJson.productName).toBe(product.displayName);
-    expect(packageJson.version).toBe('1.0.3');
+    expect(packageJson.version).toBe('1.0.4');
   });
 
   it('keeps the Esse installer and runtime identities isolated', () => {
@@ -20,7 +20,7 @@ describe('desktop product profile', () => {
     expect(product.releasePrefix).toBe('esse');
   });
 
-  it('allows fully unsigned releases but rejects partial signing configuration', async () => {
+  it('allows unsigned Windows and ad-hoc macOS releases but rejects partial publisher signing configuration', async () => {
     const workflow = await readFile(path.resolve('../..', '.github/workflows/release.yml'), 'utf8');
     expect(workflow).toContain("steps.windows-signing.outputs.enabled == 'true'");
     expect(workflow).toContain("steps.windows-signing.outputs.enabled == 'false'");
@@ -28,6 +28,7 @@ describe('desktop product profile', () => {
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'true'");
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'false'");
     expect(workflow).toContain('macOS signing and notarization secrets must be configured together or all omitted.');
+    expect(workflow).toContain('Verify ad-hoc signed macOS package');
     expect(workflow).toContain('esse-private-windows-x64');
     expect(workflow).toContain('esse-private-macos-arm64');
     expect(workflow).toContain("inputs.runner_mode == 'hosted'");

@@ -44,7 +44,7 @@ Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/e
 
 ## 代码签名
 
-私有 Agent Sidecar 的正式产物遵循独立的[私有发行签名策略](PRIVATE-CODE-SIGNING.md)；公开 Community 的 SignPath 策略不覆盖专有源码。当前签名凭据未就绪时允许发布明确标注的未签名产物；某个平台的凭据一旦完整配置，工作流会自动恢复并强制执行 Windows Authenticode 或 macOS Developer ID、公证、Gatekeeper 与票据装订验证。只配置部分凭据会阻断发布。
+私有 Agent Sidecar 的正式产物遵循独立的[私有发行签名策略](PRIVATE-CODE-SIGNING.md)；公开 Community 的 SignPath 策略不覆盖专有源码。当前发布者签名凭据未就绪时，CI 会明确验证 Windows 产物未签名、macOS 应用具有结构有效的 ad-hoc 签名，并在 Release 说明中披露两者均不代表发布者身份。某个平台的凭据一旦完整配置，工作流会自动恢复并强制执行 Windows Authenticode 或 macOS Developer ID、公证、Gatekeeper 与票据装订验证；只配置部分凭据会阻断发布。不得把校验哈希或 ad-hoc 签名等同于发布者签名，也不得要求用户关闭系统安全机制。
 
 ## 仓库结构
 

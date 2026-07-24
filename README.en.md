@@ -42,7 +42,7 @@ The directories are intentionally isolated, and the Sidecar installer never owns
 
 ## Code signing
 
-Formal private Agent Sidecar artifacts follow the separate [private release signing policy](PRIVATE-CODE-SIGNING.md); the public Community SignPath policy does not cover proprietary source. Clearly disclosed unsigned artifacts may be published while trusted credentials are unavailable. Once a platform's complete credential set is configured, the workflow automatically restores and enforces Windows Authenticode or macOS Developer ID, notarization, Gatekeeper, and stapled-ticket verification. A partial credential set blocks the release.
+Formal private Agent Sidecar artifacts follow the separate [private release signing policy](PRIVATE-CODE-SIGNING.md); the public Community SignPath policy does not cover proprietary source. While publisher credentials are unavailable, CI explicitly verifies unsigned Windows artifacts and structurally valid ad-hoc macOS app signatures, and the GitHub Release discloses that neither establishes publisher identity. Once a platform's complete credential set is configured, the workflow automatically restores and enforces Windows Authenticode or macOS Developer ID, notarization, Gatekeeper, and stapled-ticket verification; a partial credential set blocks the release. A verified checksum or ad-hoc signature is not a publisher signature, and users must never be asked to disable platform security.
 
 ## Repository layout
 

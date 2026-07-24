@@ -1,27 +1,23 @@
 ## 简体中文
 
-### Esse 1.0.3
+### Esse 1.0.4
 
-- 重新设计多批次浏览体验：按 `Esc` 可从批次明细进入浏览页，浏览按钮提供快捷键提示，并在任一任务排队或运行时实时显示旋转状态。
-- 批次卡片实时展示完成进度，并用遮罩区分“进行中”“完成有错”和“已完成”。成功重试会清除历史失败状态，应用中断遗留的任务仍会正确标记为有错。
-- 支持直接重试批次中的全部失败任务，并新增中文模糊搜索、可选日期范围和更自然的近期批次分组。
-- 图片库、参考图、附件和批次封面缩略图现在完整显示原图；非正方形图片使用留白，不再裁剪内容，同时修复浏览页面不必要的纵向滚动。
-- 错误信息现在明确区分上游服务与 Esse 本地错误，便于客户侧排查；私有版只显示通用上游标签，不暴露服务商名称。
-- 私有版 macOS 安装包现在仅面向 Apple Silicon（M 系列、arm64）；不再发布 Intel Mac 安装包。
-- Windows 与 macOS 安装包当前未做发布者签名或 Apple 公证；Release 提供 SHA256 校验。Windows 可能显示未知发布者，macOS Gatekeeper 可能拒绝打开，请勿关闭系统安全机制。
+- 修复 1.0.3 macOS 应用包的结构签名损坏问题。该问题可能导致 macOS 钥匙串拒绝 Esse 读取原有本地凭据，进而使 MCP 服务无法启动；无 Developer ID 凭据时，构建现在会完整执行 ad-hoc 签名并通过严格结构校验。
+- 图片生成请求的等待上限从 5 分钟延长到 15 分钟，避免 Nano Banana 等耗时模型在仍有可能正常返回时被客户端提前中断。请求在没有收到 HTTP 响应时不会自动重试，扣费状态仍会保留为待复核。
+- 错误归因现在明确区分上游服务返回的错误、未收到 HTTP 响应的请求链路问题和 Esse 本地错误，便于判断应检查服务端、网络链路还是本机；私有版继续隐藏上游服务商名称。
+- 整合桌面端交互样式优化，统一批次标题栏、复制与更多菜单控件的聚焦和悬停反馈。
+- 本版本替代存在上述 macOS 阻断问题的 1.0.3。Windows 安装包仍未做发布者签名；macOS arm64 应用已通过结构有效的 ad-hoc 签名校验，但未做 Developer ID 签名或 Apple 公证，二者均不建立发布者身份。
 
-[查看 v1.0.2...v1.0.3 完整变更](../../compare/v1.0.2...v1.0.3)
+[查看 v1.0.3...v1.0.4 完整变更](../../compare/v1.0.3...v1.0.4)
 
 ## English
 
-### Esse 1.0.3
+### Esse 1.0.4
 
-- Redesigns multi-batch browsing. Press `Esc` from batch details to open the browser, see the shortcut on the Browse button, and watch it show a live spinner whenever any task is queued or running.
-- Batch cards now report progress in real time and distinguish In Progress, Completed with Errors, and Completed states. Successful retries clear historical failures, while work interrupted by an application exit remains correctly marked as an error.
-- Adds one-click retry for all failed tasks in a batch, Chinese fuzzy search, an optional date range, and a more natural grouping for recently updated batches.
-- Shows complete images throughout gallery, reference, attachment, and batch-cover thumbnails. Non-square images are letterboxed instead of cropped, and unnecessary page-level vertical scrolling is removed.
-- Error details now distinguish upstream-service failures from local Esse failures for easier customer-side diagnosis. The private edition uses a generic upstream label without exposing provider names.
-- The private macOS installer now targets Apple Silicon (M-series, arm64) only. Intel Mac installers are no longer published.
-- Windows and macOS installers are currently not publisher-signed or Apple-notarized. SHA256 checksums are provided. Windows may show an unknown-publisher warning, and macOS Gatekeeper may reject the app; do not disable platform security.
+- Fixes the structurally invalid signature in the 1.0.3 macOS application bundle. That issue could make macOS Keychain reject access to existing local Esse credentials and prevent the MCP service from starting. Builds without Developer ID credentials now receive a complete ad-hoc signature and pass strict structural verification.
+- Extends the image-generation request timeout from 5 to 15 minutes so slower models such as Nano Banana are not interrupted by the client while they may still complete normally. Requests that never receive an HTTP response are not retried automatically, and their charge state remains pending review.
+- Clearly separates errors returned by the upstream service, request-path failures with no HTTP response, and local Esse errors. This helps identify whether to inspect the service, network path, or local application while the private edition continues to hide upstream provider names.
+- Integrates desktop interaction polish with consistent focus and hover feedback for the batch title bar, copy control, and overflow menus.
+- This release supersedes 1.0.3 because of the macOS blocking issue above. Windows artifacts remain unsigned by a publisher. The macOS arm64 app passes structurally valid ad-hoc signature verification but is not Developer ID-signed or Apple-notarized; neither platform mode establishes publisher identity.
 
-[View the full v1.0.2...v1.0.3 changelog](../../compare/v1.0.2...v1.0.3)
+[View the full v1.0.3...v1.0.4 changelog](../../compare/v1.0.3...v1.0.4)
