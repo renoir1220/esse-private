@@ -9,7 +9,7 @@ Provider settings, API keys, batch records, and original images stay on the loca
 ## Two distributions
 
 - **Esse Community Codex Plugin**, released from the public upstream for the Codex/ChatGPT desktop app on Windows x64, macOS arm64, and macOS x64.
-- **Agent Sidecar** for WorkBuddy and other Agents that support a local HTTP MCP. It supports Windows x64, macOS arm64, and macOS x64 with the complete Esse workspace and background task execution.
+- **Agent Sidecar** for WorkBuddy and other Agents that support a local HTTP MCP. It supports Windows x64 and Apple Silicon macOS (arm64) with the complete Esse workspace and background task execution. Intel Mac installers are no longer published.
 
 The repositories share open-source behavior but have independent distributions and version lines. Most users install only the form that matches their Agent.
 
@@ -65,7 +65,7 @@ npm install
 npm run check
 ```
 
-Agent Sidecar (one shared core for Windows x64 and macOS arm64/x64):
+Agent Sidecar (one shared core released for Windows x64 and macOS arm64):
 
 ```bash
 cd sidecars/agent

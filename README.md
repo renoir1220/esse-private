@@ -11,7 +11,7 @@ Esse 在本机保存 Provider 配置、API Key、批次记录和原始图片。�
 ## 两种发行形态
 
 - **Esse Community Codex Plugin**：由公开上游发布，适用于 Codex/ChatGPT 桌面端，支持 Windows x64、macOS arm64 和 macOS x64。
-- **Agent Sidecar**：适用于 WorkBuddy 等支持本地 HTTP MCP 的 Agent；支持 Windows x64、macOS arm64 和 macOS x64，带完整 Esse 工作台和后台任务执行能力。
+- **Agent Sidecar**：适用于 WorkBuddy 等支持本地 HTTP MCP 的 Agent；支持 Windows x64 和 Apple Silicon macOS（arm64），带完整 Esse 工作台和后台任务执行能力，不再发布 Intel Mac 安装包。
 
 两个仓库共享开源行为，但发行与版本线独立。通常只安装适合当前 Agent 的一种。
 
@@ -67,7 +67,7 @@ npm install
 npm run check
 ```
 
-Agent Sidecar（Windows x64、macOS arm64/x64 使用同一份核心代码）：
+Agent Sidecar（私有版发布 Windows x64 和 macOS arm64，使用同一份核心代码）：
 
 ```bash
 cd sidecars/agent

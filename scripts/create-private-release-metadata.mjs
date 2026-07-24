@@ -15,8 +15,7 @@ assert.equal(expectedTag, `v${packageJson.version}`, "Release tag must match the
 
 const targets = [
   { platform: "windows", arch: "x64", metadata: "windowsX64", extension: "exe" },
-  { platform: "macos", arch: "arm64", metadata: "macosArm64", extension: "dmg" },
-  { platform: "macos", arch: "x64", metadata: "macosX64", extension: "dmg" }
+  { platform: "macos", arch: "arm64", metadata: "macosArm64", extension: "dmg" }
 ];
 const files = await readdir(releaseRoot);
 const assets = [];
