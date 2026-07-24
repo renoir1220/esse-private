@@ -21,6 +21,7 @@
         "README.md",
         "SELF-HOSTED-RUNNERS.md",
         "SYNC.md",
+        "docs/editions.md",
         "docs/roadmap.md",
         "private-overlay.json",
         "scripts/create-private-release-metadata.mjs",

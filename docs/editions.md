@@ -15,7 +15,7 @@ The two desktop identities must remain distinct so both editions can be installe
 | macOS bundle ID | `com.renoir.esse.community` | private product profile |
 | Version line | public Esse version | independent, starting at `1.0.0` |
 
-Both repositories run the same test suite and package on Windows x64, macOS arm64, and macOS x64. Product-specific paths and installer names must be read from `sidecars/agent/product.json`, not duplicated in build scripts.
+The Community repository packages Windows x64, macOS arm64, and macOS x64. The private downstream runs the shared tests but publishes its Agent Sidecar only for Windows x64 and macOS arm64. Product-specific paths, supported release targets, and installer names must come from downstream product and release configuration rather than being inferred from Community assets.
 
 `releaseVersionPolicy` is part of that product boundary:
 

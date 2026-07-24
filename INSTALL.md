@@ -10,7 +10,7 @@ Do not ask the user to download an archive manually. Do not ask for a Provider A
 
 ## Agent procedure
 
-1. Confirm the host is Windows x64, macOS arm64, or macOS x64. Stop with a clear unsupported-platform message otherwise.
+1. For the Codex Plugin, confirm the host is Windows x64, macOS arm64, or macOS x64. For the private Agent Sidecar, confirm the host is Windows x64 or macOS arm64; Intel Macs are unsupported. Stop with a clear unsupported-platform message otherwise.
 2. Read the installer before executing it. The installer may request network access to `github.com` and write access only to the user's Esse application-data directory and Codex plugin configuration.
 3. Run the repository installer. It downloads `latest.json` and the matching versioned archive from the latest GitHub Release, verifies SHA256, and performs an idempotent user-scoped installation.
 4. Treat an `ESSE_INSTALL_RESULT` line with `status: "installed"` as the structured success marker. The installer performs plugin registration and verification with its selected Codex executable; do not repeat those commands through a bare `codex` from `PATH`.
@@ -72,7 +72,6 @@ Download these two assets from the same requested GitHub Release:
 - the platform and architecture asset named by that metadata file:
   - Windows x64: `windowsX64Asset`
   - macOS arm64: `macosArm64Asset`
-  - macOS x64: `macosX64Asset`
 
 Verify the asset SHA256 against the matching `*Sha256` field before opening it. The installed application and window are named Esse.
 
@@ -80,7 +79,7 @@ Verify the asset SHA256 against the matching `*Sha256` field before opening it. 
 
 Run the checksum-verified `.exe` installer. The release notes disclose whether the application and installer are Authenticode-signed. When the release is unsigned, report that Windows may show an unknown-publisher or SmartScreen warning and do not claim publisher verification. If Windows blocks the installer, stop and report the exact error; never disable Windows security controls.
 
-### macOS arm64 and x64
+### macOS arm64
 
 Open the checksum-verified `.dmg`, drag `Esse.app` into Applications, and open Esse normally. The release notes disclose whether the app is Developer ID-signed, notarized by Apple, and contains a stapled ticket. An unsigned release may be rejected by Gatekeeper; if that happens, stop and report the exact error. Never remove quarantine attributes, disable Gatekeeper, or instruct the user to choose an override.
 

@@ -5,13 +5,13 @@ This policy applies only to proprietary Esse Agent Sidecar artifacts released fr
 Code signing is temporarily optional while trusted signing credentials are unavailable. The release workflow uses an all-or-none policy independently for each platform:
 
 - when every Windows credential is configured, the application executable and Squirrel installer must have valid Authenticode signatures and trusted timestamps;
-- when every macOS credential is configured, both architecture builds must use Developer ID signing and pass Gatekeeper, Apple notarization, and stapled-ticket verification;
+- when every macOS credential is configured, the Apple Silicon build must use Developer ID signing and pass Gatekeeper, Apple notarization, and stapled-ticket verification;
 - when none of a platform's credentials are configured, the workflow may publish unsigned artifacts after all non-signing package, architecture, icon, and packaged-app smoke checks pass;
 - when only part of a platform's credential set is configured, the workflow fails instead of silently publishing a partially configured release.
 
 Every release, signed or unsigned, must also satisfy these gates:
 
-- Windows x64, macOS arm64, and macOS x64 assets are built from the same tag contained in `main`;
+- Windows x64 and macOS arm64 assets are built from the same tag contained in `main`;
 - `sidecar-latest.json` and `checksums.txt` are generated from the final assets;
 - release notes clearly disclose any unsigned or unnotarized platform artifacts.
 

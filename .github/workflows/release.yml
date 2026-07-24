@@ -38,10 +38,6 @@ jobs:
             arch: arm64
             selfRunner: '["self-hosted","esse-private-macos-arm64"]'
             hostedRunner: macos-15
-          - platform: macos
-            arch: x64
-            selfRunner: '["self-hosted","esse-private-macos-arm64"]'
-            hostedRunner: macos-15-intel
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && matrix.hostedRunner || fromJSON(matrix.selfRunner) }}
     defaults:
       run:
@@ -217,7 +213,9 @@ jobs:
 
   publish:
     needs: package
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","esse-private-macos-arm64"]') }}
+    runs-on:
+      - self-hosted
+      - esse-private-windows-x64
     permissions:
       contents: write
     steps:
@@ -234,13 +232,24 @@ jobs:
       - name: Publish Esse release
         env:
           GH_TOKEN: ${{ github.token }}
-        shell: bash
+        shell: powershell
         run: |
-          prerelease=()
-          if [[ "$RELEASE_TAG" == *-* ]]; then prerelease+=(--prerelease); fi
-          gh release create "$RELEASE_TAG" release/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --verify-tag \
-            --title "Esse $RELEASE_TAG" \
-            --notes-file .github/release-notes-prefix.md \
-            "${prerelease[@]}"
+          $assets = @(Get-ChildItem -LiteralPath 'release' -File | Sort-Object Name)
+          if ($assets.Count -eq 0) {
+            throw 'No release assets were downloaded.'
+          }
+          $ghArgs = @('release', 'create', $env:RELEASE_TAG)
+          $ghArgs += @($assets | ForEach-Object { $_.FullName })
+          $ghArgs += @(
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--verify-tag',
+            '--title', "Esse $env:RELEASE_TAG",
+            '--notes-file', '.github/release-notes-prefix.md'
+          )
+          if ($env:RELEASE_TAG -like '*-*') {
+            $ghArgs += '--prerelease'
+          }
+          & gh @ghArgs
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release create failed with exit code $LASTEXITCODE."
+          }

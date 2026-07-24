@@ -4,7 +4,7 @@ When a user asks Codex to install Esse from this private downstream repository o
 
 1. Read `INSTALL.md` completely before running commands.
 2. For the Codex Plugin, use the repository installer and the requested GitHub Release. For the Agent Sidecar, use its published platform installer. Do not build from source unless the release path is unavailable and the user explicitly agrees to a developer installation.
-3. Detect the user's operating system and architecture. The Codex Plugin and Agent Sidecar support Windows x64, macOS arm64, and macOS x64.
+3. Detect the user's operating system and architecture. The Codex Plugin supports Windows x64, macOS arm64, and macOS x64. The private Agent Sidecar supports Windows x64 and macOS arm64 only; Intel Macs are unsupported.
 4. Download scripts or artifacts to a temporary directory, verify the release SHA256 recorded in `latest.json` for the Plugin or `sidecar-latest.json` for the Agent Sidecar, and install only into the documented user-scoped Esse directory.
 5. On macOS, let `install.sh` select the Gatekeeper-approved desktop app and its managed Node runtime. Never run a bare `codex` or `node` from `PATH`, remove quarantine attributes, or tell the user to bypass Gatekeeper.
 6. Treat the installer's `ESSE_INSTALL_RESULT` as the registration result. Do not repeat its plugin-list commands through another Codex CLI; inspect the receipt and marketplace catalog statically if an additional check is needed.
