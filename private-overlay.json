@@ -19,6 +19,7 @@
         "PRIVATE-DOWNSTREAM.md",
         "README.en.md",
         "README.md",
+        "SELF-HOSTED-RUNNERS.md",
         "SYNC.md",
         "docs/roadmap.md",
         "private-overlay.json",

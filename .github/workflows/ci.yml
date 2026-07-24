@@ -31,7 +31,7 @@ permissions:
 jobs:
   route:
     name: Select runners
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode != 'hosted' && fromJSON('["self-hosted","esse-private-windows-x64"]') || 'ubuntu-slim' }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'self' && fromJSON('["self-hosted","esse-private-windows-x64"]') || 'ubuntu-slim' }}
     outputs:
       windows_runs_on: ${{ steps.windows.outputs.windows_runs_on }}
       windows_selection: ${{ steps.windows.outputs.windows_selection }}
