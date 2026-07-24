@@ -33,7 +33,7 @@ describe('desktop product profile', () => {
     expect(workflow).toContain("inputs.runner_mode == 'hosted'");
     expect(workflow).toContain('Verify independent Esse tag on Windows');
     expect(workflow).toContain('Verify independent Esse tag on macOS');
-    expect(workflow).toContain('shell: pwsh');
+    expect(workflow).toContain('shell: powershell');
   });
 
   it('hides upstream Provider identity from private error surfaces', () => {
