@@ -37,6 +37,7 @@ describe('desktop product profile', () => {
     expect(workflow).not.toContain('cache: npm');
     expect(workflow).not.toContain('macos-15-intel');
     expect(workflow).toMatch(/publish:\s+needs: package\s+runs-on:\s+- self-hosted\s+- esse-private-windows-x64/);
+    expect(workflow).toContain('node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG');
     const metadataScript = await readFile(path.resolve('../..', 'scripts/create-private-release-metadata.mjs'), 'utf8');
     expect(metadataScript).toContain('metadata: "macosArm64"');
     expect(metadataScript).not.toContain('macosX64');

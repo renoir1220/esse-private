@@ -228,7 +228,8 @@ jobs:
           path: release
           merge-multiple: true
       - name: Create checksums and Sidecar metadata
-        run: node scripts/create-private-release-metadata.mjs "$RELEASE_TAG"
+        shell: powershell
+        run: node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG
       - name: Publish Esse release
         env:
           GH_TOKEN: ${{ github.token }}
