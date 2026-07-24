@@ -20,7 +20,7 @@ test("product and packaging changes require full validation", () => {
     "sidecars/agent/package-lock.json",
     ".github/workflows/release.yml",
     ".github/workflows/ci.yml",
-    "scripts/find-reusable-full-validation.mjs",
+    "scripts/find-reusable-validation.mjs",
     "install.ps1"
   ]) {
     assert.equal(classifyPaths([candidate]).fullValidation, true, candidate);
