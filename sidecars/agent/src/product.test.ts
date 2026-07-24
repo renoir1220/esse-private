@@ -11,7 +11,7 @@ describe('desktop product profile', () => {
     expect(packageJson.name).toBe('@esse/desktop');
     expect(packageJson.private).toBe(true);
     expect(packageJson.productName).toBe(product.displayName);
-    expect(packageJson.version).toBe('1.0.3-alpha.1');
+    expect(packageJson.version).toBe('1.0.3');
   });
 
   it('keeps the Esse installer and runtime identities isolated', () => {
@@ -28,6 +28,9 @@ describe('desktop product profile', () => {
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'true'");
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'false'");
     expect(workflow).toContain('macOS signing and notarization secrets must be configured together or all omitted.');
+    expect(workflow).toContain('esse-private-windows-x64');
+    expect(workflow).toContain('esse-private-macos-arm64');
+    expect(workflow).toContain("inputs.runner_mode == 'hosted'");
   });
 
   it('hides upstream Provider identity from private error surfaces', () => {

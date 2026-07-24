@@ -9,6 +9,14 @@ on:
         description: Existing release tag matching the desktop package version
         required: true
         type: string
+      runner_mode:
+        description: Use owned runners by default; select hosted only as an explicit fallback
+        required: true
+        default: self
+        type: choice
+        options:
+          - self
+          - hosted
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -24,14 +32,17 @@ jobs:
         include:
           - platform: windows
             arch: x64
-            runner: windows-latest
+            selfRunner: '["self-hosted","esse-private-windows-x64"]'
+            hostedRunner: windows-latest
           - platform: macos
             arch: arm64
-            runner: macos-15
+            selfRunner: '["self-hosted","esse-private-macos-arm64"]'
+            hostedRunner: macos-15
           - platform: macos
             arch: x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
+            selfRunner: '["self-hosted","esse-private-macos-arm64"]'
+            hostedRunner: macos-15-intel
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && matrix.hostedRunner || fromJSON(matrix.selfRunner) }}
     defaults:
       run:
         working-directory: sidecars/agent
@@ -190,7 +201,7 @@ jobs:
 
   publish:
     needs: package
-    runs-on: ubuntu-latest
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'ubuntu-latest' || fromJSON('["self-hosted","esse-private-macos-arm64"]') }}
     permissions:
       contents: write
     steps:
