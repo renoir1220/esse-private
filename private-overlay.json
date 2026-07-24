@@ -10,7 +10,7 @@
       "reason": "Private licensing, installation, bilingual release notes, all-or-none release signing automation, and the inheritance verifier.",
       "paths": [
         ".github/release-notes-prefix.md",
-        ".github/workflows/private-inheritance.yml",
+        ".github/workflows/ci.yml",
         ".github/workflows/release.yml",
         "AGENTS.md",
         "INSTALL.md",
@@ -19,6 +19,7 @@
         "PRIVATE-DOWNSTREAM.md",
         "README.en.md",
         "README.md",
+        "SELF-HOSTED-RUNNERS.md",
         "SYNC.md",
         "docs/roadmap.md",
         "private-overlay.json",
