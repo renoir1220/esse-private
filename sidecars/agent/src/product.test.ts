@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { sanitizeProviderError } from './api-client';
 import product from '../product.json';
 
 describe('desktop product profile', () => {
@@ -27,5 +28,19 @@ describe('desktop product profile', () => {
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'true'");
     expect(workflow).toContain("steps.macos-signing.outputs.enabled == 'false'");
     expect(workflow).toContain('macOS signing and notarization secrets must be configured together or all omitted.');
+  });
+
+  it('hides upstream Provider identity from private error surfaces', () => {
+    expect(product.errorAttribution.showProviderIdentity).toBe(false);
+    expect(product.errorAttribution.redactProviderTerms).toEqual(expect.arrayContaining([
+      'tuzi',
+      'tu-zi',
+      '兔子',
+      'api.tu-zi.com',
+    ]));
+    expect(sanitizeProviderError(
+      'Tuzi at https://api.tu-zi.com: low balance',
+      { displayName: 'Tuzi', baseUrl: 'https://api.tu-zi.com' },
+    )).toBe('上游服务 at 上游服务: low balance');
   });
 });
