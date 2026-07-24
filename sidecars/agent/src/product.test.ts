@@ -34,6 +34,7 @@ describe('desktop product profile', () => {
     expect(workflow).toContain('Verify independent Esse tag on Windows');
     expect(workflow).toContain('Verify independent Esse tag on macOS');
     expect(workflow).toContain('shell: powershell');
+    expect(workflow).not.toContain('cache: npm');
   });
 
   it('hides upstream Provider identity from private error surfaces', () => {
