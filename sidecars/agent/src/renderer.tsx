@@ -37,6 +37,7 @@ import { shouldShowOnboarding } from './onboarding-state';
 import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
 import { blankOffering, createCustomProviderDraft, DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
+import { SelectMenu } from './select-menu';
 import type { BatchSnapshot, DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
 import { formatWindowTitle } from './window-title';
 import packageMetadata from '../package.json';
@@ -460,7 +461,15 @@ function BatchWorkspace(props: {
         }
       }} placeholder={selectable.length > 1 && !targetIds.length ? '双击选择想要编辑的图片' : '描述你想如何修改图片'} maxLength={20_000} />
       <div className="modify-toolbar">
-        <label className="model-select"><Lightning size={14} weight="fill" /><select value={offeringId} onChange={(event) => setOfferingId(event.target.value)}>{props.offerings.map((item) => <option key={item.id} value={item.id}>{offeringOptionLabel(item)}</option>)}</select><CaretDown size={12} /></label>
+        <SelectMenu
+          className="model-select-control"
+          value={offeringId}
+          options={props.offerings.map((item) => ({ value: item.id, label: item.displayName }))}
+          onChange={setOfferingId}
+          ariaLabel={`选择修改模型，当前 ${offering.displayName}`}
+          placement="top"
+          leading={<Lightning size={14} weight="fill" />}
+        />
         <div className="composer-actions">
           {active ? <button type="button" className="subtle-button" disabled={props.busy || !batch.queued} onClick={() => void props.onCancel()}>取消排队</button> : null}
           <button className="primary-button" disabled={props.busy || !prompt.trim() || !targetIds.length}>提交修改</button>
@@ -754,10 +763,15 @@ function GeneralSettings(props: SettingsProps) {
     </section>
     <section className="settings-section">
       <div className="settings-copy"><strong>默认模型</strong><span>Agent 没有明确指定模型时使用。</span></div>
-      <select className="settings-control" value={props.state.defaultOfferingId || ''} disabled={!availableOfferings.length || props.busy} onChange={(event) => void props.apply(() => window.esse.setDefaultOffering(event.target.value), '默认模型已更新')}>
-        {!props.state.defaultOfferingId ? <option value="">请选择默认模型</option> : null}
-        {availableOfferings.map((offering) => <option key={offering.id} value={offering.id}>{offeringOptionLabel(offering)}</option>)}
-      </select>
+      <SelectMenu
+        className="settings-model-select"
+        value={props.state.defaultOfferingId || ''}
+        options={availableOfferings.map((offering) => ({ value: offering.id, label: offeringOptionLabel(offering) }))}
+        placeholder="请选择默认模型"
+        ariaLabel="选择默认模型"
+        disabled={!availableOfferings.length || props.busy}
+        onChange={(value) => void props.apply(() => window.esse.setDefaultOffering(value), '默认模型已更新')}
+      />
     </section>
     <section className="settings-section">
       <div className="settings-copy"><strong>并发任务数</strong><span>Esse 同时向内置图片服务提交的最大任务数，默认 10。</span></div>
@@ -840,7 +854,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
         <Field label="服务商名称"><input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></Field>
         <Field label="档位名称"><input value={draft.tierName} onChange={(event) => setDraft({ ...draft, tierName: event.target.value })} /></Field>
         <Field label="API 地址" wide><input value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} /></Field>
-        <Field label="接口格式"><select value={draft.adapterId} onChange={(event) => setDraft({ ...draft, adapterId: event.target.value as ProviderDraft['adapterId'] })}><option value="tuzi-json-images">兼容 JSON Images</option><option value="openai-images">OpenAI Images</option></select></Field>
+        <SelectField label="接口格式"><SelectMenu value={draft.adapterId} ariaLabel="选择接口格式" options={[{ value: 'tuzi-json-images', label: '兼容 JSON Images' }, { value: 'openai-images', label: 'OpenAI Images' }]} onChange={(value) => setDraft({ ...draft, adapterId: value as ProviderDraft['adapterId'] })} /></SelectField>
         <Field label="并发数"><input type="number" min="1" max="12" value={draft.concurrency} onChange={(event) => setDraft({ ...draft, concurrency: Number(event.target.value) })} /></Field>
         <Field label="API Key" wide hint={draft.hasApiKey ? '留空保留现有密钥' : '只保存在当前系统用户的安全存储中'}><div className="secret-input"><input type="password" autoComplete="off" placeholder={draft.hasApiKey ? '•••••••• 已安全保存' : '粘贴 API Key'} value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} /><button type="button" onClick={() => void test()} disabled={Boolean(busyAction) || !draft.baseUrl || (!draft.hasApiKey && !draft.apiKey.trim())}>{busyAction === 'test' ? '测试中…' : '测试连接'}</button></div></Field>
       </div></section>
@@ -852,7 +866,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
           <Field label="显示名称"><input value={offering.displayName} onChange={(event) => updateOffering(index, { displayName: event.target.value })} /></Field>
           <Field label="服务商模型 ID"><input value={offering.providerModelId} onChange={(event) => updateOffering(index, { providerModelId: event.target.value })} /></Field>
           <Field label="标准模型 ID"><input value={offering.canonicalModelId} onChange={(event) => updateOffering(index, { canonicalModelId: event.target.value })} /></Field>
-          <Field label="计费"><div className="price-row"><select value={offering.price.mode} onChange={(event) => updateOffering(index, { price: { ...offering.price, mode: event.target.value as OfferingConfig['price']['mode'] } })}><option value="per_request">按次</option><option value="token">按 Token</option><option value="unknown">未知</option></select><input type="number" step="0.001" placeholder="价格" value={offering.price.amount ?? ''} onChange={(event) => updateOffering(index, { price: { ...offering.price, amount: event.target.value ? Number(event.target.value) : undefined } })} /><input className="currency" value={offering.price.currency} onChange={(event) => updateOffering(index, { price: { ...offering.price, currency: event.target.value } })} /></div></Field>
+          <SelectField label="计费"><div className="price-row"><SelectMenu value={offering.price.mode} ariaLabel={`选择模型 ${index + 1} 的计费方式`} options={[{ value: 'per_request', label: '按次' }, { value: 'token', label: '按 Token' }, { value: 'unknown', label: '未知' }]} onChange={(value) => updateOffering(index, { price: { ...offering.price, mode: value as OfferingConfig['price']['mode'] } })} /><input type="number" step="0.001" placeholder="价格" aria-label={`模型 ${index + 1} 的价格`} value={offering.price.amount ?? ''} onChange={(event) => updateOffering(index, { price: { ...offering.price, amount: event.target.value ? Number(event.target.value) : undefined } })} /><input className="currency" aria-label={`模型 ${index + 1} 的币种`} value={offering.price.currency} onChange={(event) => updateOffering(index, { price: { ...offering.price, currency: event.target.value } })} /></div></SelectField>
         </div>{draft.offerings.length > 1 ? <button className="remove-offering" onClick={() => setDraft((current) => ({ ...current, offerings: current.offerings.filter((_, offeringIndex) => offeringIndex !== index) }))}><Trash size={14} /></button> : null}</article>)}</div>
       </section>
       <footer className="provider-actions"><div>{draft.id ? <button className={`subtle-button is-danger ${confirmDelete ? 'confirm' : ''}`} onClick={() => void remove()} disabled={Boolean(busyAction)}>{confirmDelete ? '再次点击确认删除' : '删除配置'}</button> : null}</div><button className="primary-button" onClick={() => void save()} disabled={Boolean(busyAction) || !draft.displayName || !draft.baseUrl || (!draft.id && !draft.apiKey.trim()) || draft.offerings.some((offering) => !offering.providerModelId)}>{busyAction === 'save' ? '保存中…' : '保存'}</button></footer>
@@ -862,6 +876,10 @@ function AdvancedProviderSettings(props: SettingsProps) {
 
 function Field(props: { label: string; wide?: boolean; hint?: string; children: React.ReactNode }) {
   return <label className={`provider-field ${props.wide ? 'wide' : ''}`}><span><strong>{props.label}</strong>{props.hint ? <small>{props.hint}</small> : null}</span>{props.children}</label>;
+}
+
+function SelectField(props: { label: string; wide?: boolean; hint?: string; children: React.ReactNode }) {
+  return <div className={`provider-field ${props.wide ? 'wide' : ''}`}><span><strong>{props.label}</strong>{props.hint ? <small>{props.hint}</small> : null}</span>{props.children}</div>;
 }
 
 function providerDraftFromProfile(profile: ProviderProfile): ProviderDraft {
