@@ -135,7 +135,7 @@ jobs:
           done
           if [[ "$configured_count" -eq 0 ]]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::macOS signing credentials are not configured. This release will not be Developer ID signed or notarized."
+            echo "::warning::macOS signing credentials are not configured. This release will use a verified ad-hoc app signature and will not be Developer ID signed or notarized."
           elif [[ "$configured_count" -ne "${#required[@]}" ]]; then
             echo "macOS signing and notarization secrets must be configured together or all omitted." >&2
             exit 1
@@ -200,7 +200,7 @@ jobs:
         if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'true'
         shell: bash
         run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }} --require-signed
-      - name: Verify unsigned macOS package
+      - name: Verify ad-hoc signed macOS package
         if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'false'
         shell: bash
         run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
