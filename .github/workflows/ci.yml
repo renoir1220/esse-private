@@ -4,16 +4,119 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+    inputs:
+      runner_mode:
+        description: Select runners automatically or force one runner class
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - self
+          - hosted
+      run_macos:
+        description: Run the Apple Silicon macOS checks
+        required: true
+        default: true
+        type: boolean
+      probe_default_token:
+        description: Test whether GITHUB_TOKEN can read repository runner status
+        required: true
+        default: false
+        type: boolean
+
+concurrency:
+  group: private-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  verify:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: plugins/codex
+  route:
+    name: Select runners
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode != 'hosted' && fromJSON('["self-hosted","esse-private-windows-x64"]') || 'ubuntu-slim' }}
+    outputs:
+      windows_runs_on: ${{ steps.windows.outputs.windows_runs_on }}
+      windows_selection: ${{ steps.windows.outputs.windows_selection }}
+      windows_reason: ${{ steps.windows.outputs.windows_reason }}
+      macos_runs_on: ${{ steps.macos.outputs.macos_runs_on }}
+      macos_selection: ${{ steps.macos.outputs.macos_selection }}
+      macos_reason: ${{ steps.macos.outputs.macos_reason }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      - name: Probe default token runner visibility
+        if: github.event_name == 'workflow_dispatch' && inputs.probe_default_token
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/$env:GITHUB_REPOSITORY/actions/runners" --silent
+      - name: Select Windows runner
+        id: windows
+        env:
+          RUNNER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode || 'auto' }}
+          RUNNER_LABEL: esse-private-windows-x64
+          SELF_HOSTED_RUNS_ON_JSON: '["self-hosted","esse-private-windows-x64"]'
+          HOSTED_RUNS_ON_JSON: '"windows-latest"'
+          OUTPUT_PREFIX: windows
+          RUNNER_ROUTER_TOKEN: ${{ secrets.RUNNER_ROUTER_TOKEN || github.token }}
+        run: node scripts/select-ci-runner.mjs
+      - name: Select Apple Silicon runner
+        id: macos
+        env:
+          RUNNER_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode || 'auto' }}
+          RUNNER_LABEL: esse-private-macos-arm64
+          SELF_HOSTED_RUNS_ON_JSON: '["self-hosted","esse-private-macos-arm64"]'
+          HOSTED_RUNS_ON_JSON: '"macos-15"'
+          OUTPUT_PREFIX: macos
+          RUNNER_ROUTER_TOKEN: ${{ secrets.RUNNER_ROUTER_TOKEN || github.token }}
+        run: node scripts/select-ci-runner.mjs
+      - name: Record routing decision
+        shell: pwsh
+        run: |
+          @"
+          ## Runner routing
+
+          - Windows: `${{ steps.windows.outputs.windows_selection }}` — ${{ steps.windows.outputs.windows_reason }}
+          - macOS ARM64: `${{ steps.macos.outputs.macos_selection }}` — ${{ steps.macos.outputs.macos_reason }}
+          "@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8
+
+  verify-private-overlay:
+    name: Verify private inheritance
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.windows_runs_on) }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      - name: Fetch Community source of truth
+        shell: pwsh
+        run: |
+          $upstream = node -p "require('./private-overlay.json').upstream.repository"
+          $branch = node -p "require('./private-overlay.json').upstream.branch"
+          if (git remote get-url upstream 2>$null) {
+            git remote set-url upstream $upstream
+          } else {
+            git remote add upstream $upstream
+          }
+          git fetch --no-tags upstream $branch
+      - run: node scripts/verify-private-overlay.mjs upstream/main
+
+  verify-windows:
+    name: Verify Windows x64
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.windows_runs_on) }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
@@ -22,114 +125,99 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: plugins/codex/package-lock.json
+          cache-dependency-path: |
+            plugins/codex/package-lock.json
+            sidecars/agent/package-lock.json
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.11
-      - run: npm ci
-      - run: npm run check
+      - name: Install Codex Plugin dependencies
+        working-directory: plugins/codex
+        run: npm ci
+      - name: Verify Codex Plugin
+        working-directory: plugins/codex
+        run: npm run check
       - name: Record Windows cold/warm thumbnail benchmark
+        working-directory: plugins/codex
         run: npm run benchmark:thumbnails
-      - run: node scripts/package-releases.mjs --target windows-x64
+      - name: Package Windows Codex Plugin
+        working-directory: plugins/codex
+        run: node scripts/package-releases.mjs --target windows-x64
       - name: Run Windows installation user-path E2E
+        working-directory: plugins/codex
         run: npm run e2e:windows
       - name: Parse Windows installer
         shell: pwsh
-        working-directory: .
-        run: |
-          $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\install.ps1))
-      - name: Parse macOS installer
-        shell: bash
-        working-directory: .
-        run: bash -n ./install.sh
-
-  verify-agent-sidecar:
-    runs-on: windows-latest
-    defaults:
-      run:
+        run: $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\install.ps1))
+      - name: Install Agent Sidecar dependencies
         working-directory: sidecars/agent
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: sidecars/agent/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run make
-      - run: npm run verify:icons:windows
-      - run: npm run verify:package:windows
-      - name: Verify Esse installer
+        run: npm ci
+      - name: Verify Agent Sidecar source
+        working-directory: sidecars/agent
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Build Agent Sidecar installer
+        working-directory: sidecars/agent
+        run: npm run make
+      - name: Verify Agent Sidecar installer
+        working-directory: sidecars/agent
         shell: pwsh
         run: |
-          $product = Get-Content -Raw -Encoding UTF8 .\product.json | ConvertFrom-Json
-          $installer = Resolve-Path (Join-Path .\out\make\squirrel.windows\x64 $product.windowsSetupExe)
-          if ((Get-Item -LiteralPath $installer).Length -lt 1MB) { throw "Esse installer is unexpectedly small." }
+          npm run verify:icons:windows
+          npm run verify:package:windows
+          $product = Get-Content -Raw -Encoding UTF8 'product.json' | ConvertFrom-Json
+          $installer = Resolve-Path (Join-Path '.\out\make\squirrel.windows\x64' $product.windowsSetupExe)
+          if ((Get-Item -LiteralPath $installer).Length -lt 1MB) {
+            throw "Esse installer is unexpectedly small."
+          }
 
-  verify-agent-sidecar-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-15
-          - arch: x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
+  verify-macos-arm64:
+    name: Verify macOS ARM64
+    if: github.event_name != 'workflow_dispatch' || inputs.run_macos
+    needs: route
+    runs-on: ${{ fromJSON(needs.route.outputs.macos_runs_on) }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            plugins/codex/package-lock.json
+            sidecars/agent/package-lock.json
+      - name: Install Agent Sidecar dependencies
         working-directory: sidecars/agent
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: sidecars/agent/package-lock.json
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run make:macos:${{ matrix.arch }}
-      - run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
-
-  macos-package-safety:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: macos-arm64
-            runner: macos-15
-          - target: macos-x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
+        run: npm ci
+      - name: Verify Agent Sidecar source
+        working-directory: sidecars/agent
+        run: |
+          npm run typecheck
+          npm run lint
+          npm test
+      - name: Build and verify Agent Sidecar
+        working-directory: sidecars/agent
+        run: |
+          npm run make:macos:arm64
+          bash scripts/verify-macos-bundle.sh arm64
+      - name: Install Codex Plugin dependencies
         working-directory: plugins/codex
-    steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: plugins/codex/package-lock.json
-      - run: npm ci
-      - run: npm run check
-      - name: Record macOS cold/warm thumbnail benchmark
-        run: npm run benchmark:thumbnails
-      - run: node scripts/package-releases.mjs --target ${{ matrix.target }}
+        run: npm ci
+      - name: Verify Codex Plugin
+        working-directory: plugins/codex
+        run: |
+          npm run check
+          npm run benchmark:thumbnails
+          node scripts/package-releases.mjs --target macos-arm64
+      - name: Verify macOS installer syntax
+        run: bash -n ./install.sh
       - name: Verify macOS archive contains only the safe launcher
         shell: bash
-        working-directory: .
         run: |
-          archive=(release/esse-${{ matrix.target }}-v*.zip)
+          archive=(plugins/codex/release/esse-macos-arm64-v*.zip)
           test "${#archive[@]}" -eq 1
           extracted="$(mktemp -d)"
           /usr/bin/ditto -x -k "${archive[0]}" "$extracted"
