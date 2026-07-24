@@ -87,7 +87,7 @@ jobs:
         if: github.event_name == 'push' && github.ref_name == 'main' && steps.paths.outputs.full_required == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: node scripts/find-reusable-full-validation.mjs ${{ steps.identity.outputs.tree }}
+        run: node scripts/find-reusable-validation.mjs ${{ steps.identity.outputs.tree }}
       - name: Select validation tier
         id: scope
         shell: powershell
@@ -109,6 +109,7 @@ jobs:
   verify-private-overlay:
     name: Verify private inheritance
     needs: classify
+    if: needs.classify.outputs.reused_run_id == ''
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -136,6 +137,7 @@ jobs:
   verify-windows:
     name: Verify Windows x64
     needs: classify
+    if: needs.classify.outputs.reused_run_id == ''
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -150,7 +152,7 @@ jobs:
       - name: Verify CI and release policy scripts
         shell: powershell
         run: |
-          node --test scripts/classify-private-ci.test.mjs scripts/find-reusable-full-validation.test.mjs
+          node --test scripts/classify-private-ci.test.mjs scripts/find-reusable-validation.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-private-release-pipeline.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -288,8 +290,8 @@ jobs:
           cmp "$installed_widget" "$extracted/plugins/esse/mcp/widget.html"
           test "$(find "$install_root/versions" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" -eq 1
 
-  record-full-validation:
-    name: Record exact-tree full validation
+  record-validation:
+    name: Record exact-tree PR validation
     needs:
       - classify
       - verify-private-overlay
@@ -297,10 +299,13 @@ jobs:
       - verify-macos-arm64
     if: >-
       always() &&
-      needs.classify.outputs.full_validation == 'true' &&
+      github.event_name == 'pull_request' &&
       needs.verify-private-overlay.result == 'success' &&
       needs.verify-windows.result == 'success' &&
-      needs.verify-macos-arm64.result == 'success'
+      (
+        needs.classify.outputs.full_validation != 'true' ||
+        needs.verify-macos-arm64.result == 'success'
+      )
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
@@ -311,21 +316,27 @@ jobs:
         shell: powershell
         run: |
           $tree = git rev-parse 'HEAD^{tree}'
+          $fullValidation = '${{ needs.classify.outputs.full_validation }}' -eq 'true'
           $receipt = @{
             schemaVersion = 1
             repository = $env:GITHUB_REPOSITORY
             workflowRunId = $env:GITHUB_RUN_ID
             commit = (git rev-parse HEAD)
             tree = $tree
-            targets = @('windows-x64', 'macos-arm64')
+            tier = if ($fullValidation) { 'full' } else { 'fast' }
+            targets = if ($fullValidation) {
+              @('source', 'windows-x64', 'macos-arm64')
+            } else {
+              @('source')
+            }
           } | ConvertTo-Json
-          $receiptPath = Join-Path $env:RUNNER_TEMP 'full-validation.json'
+          $receiptPath = Join-Path $env:RUNNER_TEMP 'validation.json'
           $receipt | Set-Content -LiteralPath $receiptPath -Encoding UTF8
           "tree=$tree" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "receipt=$receiptPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: esse-private-full-validation-${{ steps.receipt.outputs.tree }}
+          name: esse-private-validation-${{ steps.receipt.outputs.tree }}
           path: ${{ steps.receipt.outputs.receipt }}
           if-no-files-found: error
           retention-days: 30
