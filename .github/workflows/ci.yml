@@ -148,7 +148,7 @@ jobs:
       - name: Verify macOS archive contains only the safe launcher
         shell: bash
         run: |
-          archive=(plugins/codex/release/esse-macos-arm64-v*.zip)
+          archive=(release/esse-macos-arm64-v*.zip)
           test "${#archive[@]}" -eq 1
           extracted="$(mktemp -d)"
           /usr/bin/ditto -x -k "${archive[0]}" "$extracted"
