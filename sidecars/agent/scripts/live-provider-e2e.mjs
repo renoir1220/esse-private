@@ -70,7 +70,7 @@ async function connectLocalEsse() {
   const connections = await loadLocalConnections();
   let lastError;
   for (const connection of connections) {
-    const candidate = new Client({ name: 'esse-private-release-e2e', version: packageJson.version });
+    const candidate = new Client({ name: 'esse-release-e2e', version: packageJson.version });
     try {
       await candidate.connect(new StreamableHTTPClientTransport(new URL(connection.url), {
         requestInit: { headers: { authorization: connection.authorization } },
