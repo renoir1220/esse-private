@@ -38,6 +38,7 @@ function global:gh {
   switch ($Arguments[1]) {
     "view" {
       if (-not $global:EssePublishTestExists) {
+        Write-Error "release not found"
         $global:LASTEXITCODE = 1
         return
       }

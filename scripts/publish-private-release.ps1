@@ -17,8 +17,14 @@ function Invoke-GitHubCli {
     [switch]$AllowFailure
   )
 
-  $output = @(& gh @Arguments 2>&1)
-  $exitCode = $LASTEXITCODE
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    $output = @(& gh @Arguments 2>&1)
+    $exitCode = $LASTEXITCODE
+  } finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
   if (-not $AllowFailure -and $exitCode -ne 0) {
     throw "gh $($Arguments -join ' ') failed with exit code $exitCode.`n$($output -join [Environment]::NewLine)"
   }
