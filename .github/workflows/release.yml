@@ -92,6 +92,7 @@ jobs:
           echo "commit=$commit" >> "$GITHUB_OUTPUT"
       - run: npm run typecheck
       - run: npm test
+      - run: npm run e2e:thumbnails
       - name: Resolve Windows signing mode
         if: matrix.platform == 'windows'
         id: windows-signing
