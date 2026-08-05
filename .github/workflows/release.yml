@@ -82,14 +82,15 @@ jobs:
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
       - name: Export release commit
         id: identity
-        shell: bash
+        shell: node {0}
         env:
           WINDOWS_COMMIT: ${{ steps.identity-windows.outputs.commit }}
           MACOS_COMMIT: ${{ steps.identity-macos.outputs.commit }}
         run: |
-          commit="${WINDOWS_COMMIT:-$MACOS_COMMIT}"
-          test -n "$commit"
-          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+          const fs = require('node:fs');
+          const commit = process.env.WINDOWS_COMMIT || process.env.MACOS_COMMIT;
+          if (!commit) throw new Error('Release tag did not resolve to a commit.');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit=${commit}\n`);
       - run: npm run typecheck
       - run: npm test
       - run: npm run e2e:thumbnails
@@ -222,7 +223,7 @@ jobs:
         run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
       - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
       - name: Bind staged asset to tag and commit
-        working-directory: ../..
+        working-directory: ${{ github.workspace }}
         run: >-
           node scripts/create-private-release-provenance.mjs
           ${{ env.RELEASE_TAG }}
