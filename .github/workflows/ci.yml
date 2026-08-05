@@ -200,6 +200,10 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
+      - name: Verify bounded thumbnail loading
+        if: needs.classify.outputs.full_validation == 'true'
+        working-directory: sidecars/agent
+        run: npm run e2e:thumbnails
       - name: Build Agent Sidecar installer
         if: needs.classify.outputs.full_validation == 'true'
         working-directory: sidecars/agent
@@ -238,6 +242,7 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
+          npm run e2e:thumbnails
       - name: Build and verify Agent Sidecar
         working-directory: sidecars/agent
         run: |
