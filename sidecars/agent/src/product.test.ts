@@ -36,6 +36,9 @@ describe('desktop product profile', () => {
     expect(buildWorkflow).toContain('Verify independent Esse tag on Windows');
     expect(buildWorkflow).toContain('Verify independent Esse tag on macOS');
     expect(buildWorkflow).toContain('shell: powershell');
+    expect(buildWorkflow).toContain('shell: node {0}');
+    expect(buildWorkflow).toContain('working-directory: ${{ github.workspace }}');
+    expect(buildWorkflow).not.toContain('working-directory: ../..');
     expect(buildWorkflow).not.toContain('cache: npm');
     expect(buildWorkflow).not.toContain('macos-15-intel');
     expect(buildWorkflow).toContain('create-private-release-provenance.mjs');
