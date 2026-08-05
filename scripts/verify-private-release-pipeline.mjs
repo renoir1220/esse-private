@@ -12,6 +12,10 @@ const packageJson = JSON.parse(
 const product = JSON.parse(
   await readFile(path.join(repositoryRoot, "sidecars", "agent", "product.json"), "utf8")
 );
+const publishWorkflow = await readFile(
+  path.join(repositoryRoot, ".github", "workflows", "release-publish.yml"),
+  "utf8"
+);
 const tag = `v${packageJson.version}`;
 const commit = "0123456789abcdef0123456789abcdef01234567";
 const releaseRoot = await mkdtemp(path.join(tmpdir(), "esse-private-release-pipeline-"));
@@ -51,5 +55,9 @@ assert.equal(metadata.windowsX64Asset.endsWith(".exe"), true);
 assert.equal(metadata.macosArm64Asset.endsWith(".dmg"), true);
 const checksums = await readFile(path.join(releaseRoot, "checksums.txt"), "utf8");
 assert.equal(checksums.trim().split(/\r?\n/).length, 2);
+assert.match(publishWorkflow, /\$run\.head_repository\.full_name -ne \$env:GITHUB_REPOSITORY/);
+assert.match(publishWorkflow, /\$run\.event -eq 'workflow_dispatch'/);
+assert.match(publishWorkflow, /\$run\.head_branch -ne \$repository\.default_branch/);
+assert.match(publishWorkflow, /BUILD_COMMIT=\$tagCommit/);
 
 console.log(JSON.stringify({ status: "ok", tag, targets: targets.length }));
