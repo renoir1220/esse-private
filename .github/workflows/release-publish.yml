@@ -82,6 +82,14 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ env.RELEASE_TAG }}
+      - name: Checkout recovery publisher
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          path: .release-tools
       - name: Verify tag and build commit
         shell: powershell
         run: |
@@ -111,8 +119,12 @@ jobs:
       - name: Publish or safely resume draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISHER_SCRIPT: ${{ github.event_name == 'workflow_dispatch' && '.release-tools/scripts/publish-private-release.ps1' || 'scripts/publish-private-release.ps1' }}
         shell: powershell
-        run: >-
-          .\scripts\publish-private-release.ps1
-          -Tag $env:RELEASE_TAG
-          -Repository $env:GITHUB_REPOSITORY
+        run: |
+          $publisher = Join-Path $env:GITHUB_WORKSPACE $env:PUBLISHER_SCRIPT
+          & $publisher `
+            -Tag $env:RELEASE_TAG `
+            -Repository $env:GITHUB_REPOSITORY `
+            -ReleaseRoot (Join-Path $env:GITHUB_WORKSPACE 'release') `
+            -NotesFile (Join-Path $env:GITHUB_WORKSPACE '.github/release-notes-prefix.md')
