@@ -59,5 +59,8 @@ assert.match(publishWorkflow, /\$run\.head_repository\.full_name -ne \$env:GITHU
 assert.match(publishWorkflow, /\$run\.event -eq 'workflow_dispatch'/);
 assert.match(publishWorkflow, /\$run\.head_branch -ne \$repository\.default_branch/);
 assert.match(publishWorkflow, /BUILD_COMMIT=\$tagCommit/);
+assert.match(publishWorkflow, /name: Checkout recovery publisher/);
+assert.match(publishWorkflow, /path: \.release-tools/);
+assert.match(publishWorkflow, /PUBLISHER_SCRIPT:.*workflow_dispatch/);
 
 console.log(JSON.stringify({ status: "ok", tag, targets: targets.length }));
