@@ -23,7 +23,6 @@ describe('desktop product profile', () => {
   it('allows unsigned Windows and ad-hoc macOS releases but rejects partial publisher signing configuration', async () => {
     const ciWorkflow = await readFile(path.resolve('../..', '.github/workflows/ci.yml'), 'utf8');
     const buildWorkflow = await readFile(path.resolve('../..', '.github/workflows/release.yml'), 'utf8');
-    const publishWorkflow = await readFile(path.resolve('../..', '.github/workflows/release-publish.yml'), 'utf8');
     expect(buildWorkflow).toContain("steps.windows-signing.outputs.enabled == 'true'");
     expect(buildWorkflow).toContain("steps.windows-signing.outputs.enabled == 'false'");
     expect(buildWorkflow).toContain('Windows signing secrets must be configured together or all omitted.');
@@ -33,7 +32,9 @@ describe('desktop product profile', () => {
     expect(buildWorkflow).toContain('Verify ad-hoc signed macOS package');
     expect(buildWorkflow).toContain('esse-private-windows-x64');
     expect(buildWorkflow).toContain('esse-private-macos-arm64');
-    expect(buildWorkflow).toContain("inputs.runner_mode == 'hosted'");
+    expect(buildWorkflow).not.toContain('runner_mode');
+    expect(buildWorkflow).not.toContain('windows-latest');
+    expect(buildWorkflow).not.toContain('macos-15');
     expect(buildWorkflow).toContain('Verify independent Esse tag on Windows');
     expect(buildWorkflow).toContain('Verify independent Esse tag on macOS');
     expect(buildWorkflow).toContain('shell: pwsh');
@@ -46,12 +47,16 @@ describe('desktop product profile', () => {
     expect(buildWorkflow).toContain('create-private-release-provenance.mjs');
     expect(ciWorkflow).toContain('retention-days: 1');
     expect(buildWorkflow).toContain('retention-days: 1');
-    expect(publishWorkflow).toContain('workflow_run:');
-    expect(publishWorkflow).toContain('actions/download-artifact');
-    expect(publishWorkflow).toContain('verify-private-release-provenance.mjs');
-    expect(publishWorkflow).toContain('node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG');
-    expect(publishWorkflow).toContain('publish-private-release.ps1');
+    expect(buildWorkflow).toContain('needs: package');
+    expect(buildWorkflow).toContain('actions/download-artifact');
+    expect(buildWorkflow).toContain('verify-private-release-provenance.mjs');
+    expect(buildWorkflow).toContain('node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG');
+    expect(buildWorkflow).toContain('refusing to overwrite it');
+    expect(buildWorkflow).not.toContain('workflow_run:');
+    expect(buildWorkflow).not.toContain('build_run_id');
     expect(buildWorkflow).not.toContain('publish-private-release.ps1');
+    expect(buildWorkflow).not.toContain('Start-Sleep');
+    expect(buildWorkflow).not.toContain('--clobber');
     const metadataScript = await readFile(path.resolve('../..', 'scripts/create-private-release-metadata.mjs'), 'utf8');
     expect(metadataScript).toContain('metadata: "macosArm64"');
     expect(metadataScript).not.toContain('macosX64');

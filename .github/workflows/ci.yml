@@ -156,8 +156,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node scripts/verify-private-release-pipeline.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\scripts\publish-private-release.ps1))
-          & .\scripts\test-publish-private-release.ps1
           $null = [scriptblock]::Create((Get-Content -Raw -Encoding UTF8 .\install.ps1))
           bash -n ./install.sh
       - name: Install Codex Plugin dependencies
