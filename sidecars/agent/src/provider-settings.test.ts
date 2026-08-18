@@ -70,6 +70,9 @@ describe('Provider settings', () => {
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
       expect.objectContaining({ providerType: 'esse-managed', concurrency: 7 }),
     ]));
+    await expect(store.saveEsseConcurrency(24)).resolves.toBe(24);
+    await expect(store.saveEsseConcurrency(1.5)).rejects.toThrow(/正整数/);
+    await expect(store.saveEsseConcurrency(0)).rejects.toThrow(/正整数/);
   });
 
   it('keeps a user-created Provider available only through advanced settings', async () => {

@@ -1,25 +1,25 @@
 ## 简体中文
 
-### Esse 1.0.5
+### Esse 1.1.0-beta.1
 
-- 图片网格、参考图和批次浏览改用最长边 512 像素的缓存预览，不再将 2K/4K 原图直接作为缩略图解码；原图保持不变，仅在查看大图、下载、复制、导出或提交参考图时读取。
-- 缩略图只在接近可视区域时加载，离开较远区域后会主动卸载，离屏卡片也会跳过绘制。跨平台压力测试会用 120 个历史批次验证加载数量始终有界，并拒绝批量原图请求。
-- 预览生成按顺序执行并自动合并重复请求，磁盘缓存限制为约 256 MB；缓存缺失或原图变化时会自动重建，预览异常也不会影响原图使用。
-- 更新网络边界相关依赖，修复上游已披露的 SSRF 分类绕过、HTTP 客户端解析与缓存问题，以及本地服务 CORS 正则拒绝服务问题。
-- 测试和 QA 会话改用临时 MCP 配对令牌，不再触发或污染 macOS 钥匙串；普通用户会话仍使用受保护的持久令牌。macOS 包启动 smoke 也不再因进程未响应而无限等待。
-- Windows 安装包仍未做发布者签名；macOS arm64 应用使用经过结构校验的 ad-hoc 签名，但未做 Developer ID 签名或 Apple 公证，二者均不建立发布者身份。
+- 修复大型资料库和批量任务运行期间主进程可能持续高 CPU 的问题。批次和单张图片的变化现在只增量更新对应状态，不再牵动无关批次或反复广播、解析完整资料库。
+- 图片资料库只在启动时建立一次内存索引，之后随单张图片的创建和删除增量维护；批次列表改为一次批量查询所需图片，避免重复扫描输出目录和重复解析 `library.json`。
+- 调度器按批次公平推进，每轮每个批次只领取一个任务；参考图按顺序编码，避免一次任务瞬间并行解码多张原图。内置服务仍默认并发 10，并按用户设置执行，不会被内部默认值静默压低。
+- Provider 或网络请求失败时直接将该任务标记为失败并显示原始错误，不进行隐藏的自动重试或全局网络恢复等待。扣费状态未知的任务仍需用户明确确认后才能手动重试，避免重复扣费。
+- 这是面向严重性能问题的测试版本。发布制品仍会从同一个 Git tag 分别在 Windows x64 和 macOS arm64 上完整构建、测试并校验来源；不会复用旧版本安装包。
+- Windows 安装包未做发布者签名；macOS arm64 应用使用经过结构校验的 ad-hoc 签名，但未做 Developer ID 签名或 Apple 公证，二者均不建立发布者身份。
 
-[查看 v1.0.4...v1.0.5 完整变更](../../compare/v1.0.4...v1.0.5)
+[查看 v1.0.5...v1.1.0-beta.1 完整变更](../../compare/v1.0.5...v1.1.0-beta.1)
 
 ## English
 
-### Esse 1.0.5
+### Esse 1.1.0-beta.1
 
-- Gallery grids, reference lists, and the batch browser now use cached previews capped at a 512-pixel long edge instead of decoding 2K/4K originals as thumbnails. Originals remain unchanged and are read only for full-image viewing, download, copy, export, or Provider reference submission.
-- Thumbnails load only near the viewport and unload again when far away, while offscreen cards skip paint work. Cross-platform stress coverage opens 120 historical batches, keeps the loaded set bounded, and rejects bulk original-image requests.
-- Preview generation is serialized and deduplicated, with an approximately 256 MB disk-cache limit. Missing or stale previews rebuild automatically, while preview failures never make the original unavailable.
-- Updates network-boundary dependencies to address disclosed upstream SSRF-classification bypasses, HTTP client parsing and cache issues, and a CORS regular-expression denial of service in the local server stack.
-- Test and QA sessions now use ephemeral MCP pairing tokens instead of prompting for or contaminating the macOS Keychain; ordinary user sessions still use protected persistent tokens. The packaged macOS smoke test also has bounded process cleanup.
-- Windows artifacts remain unsigned by a publisher. The macOS arm64 app uses a structurally verified ad-hoc signature without Developer ID signing or Apple notarization; neither platform mode establishes publisher identity.
+- Fixes sustained main-process CPU usage that could occur with large libraries and active batch workloads. Batch and image changes now update only their corresponding state instead of touching unrelated batches or repeatedly broadcasting and parsing the complete library.
+- The image library builds its in-memory index once at startup and maintains it incrementally as individual images are created or removed. Batch listing now fetches the required images in one batched lookup instead of repeatedly scanning outputs or reparsing `library.json`.
+- The scheduler advances batches fairly, taking one job from each batch per pass. Reference images are encoded sequentially so one job cannot suddenly decode many originals in parallel. The managed service still defaults to 10 concurrent jobs and honors the user setting without silently reducing it through an internal default.
+- Provider and network failures now fail the affected job immediately with the original error instead of entering hidden automatic retries or a global network-recovery wait. Jobs with unknown charge state still require explicit user confirmation before a manual retry to avoid duplicate charges.
+- This is a beta release for a serious performance issue. Release artifacts will still be fully built, tested, and provenance-checked for Windows x64 and macOS arm64 from the same Git tag; no older installer will be reused.
+- Windows installers are not publisher-signed. The macOS arm64 app uses a structurally verified ad-hoc signature without Developer ID signing or Apple notarization; neither mode establishes publisher identity.
 
-[View the full v1.0.4...v1.0.5 changelog](../../compare/v1.0.4...v1.0.5)
+[View the full v1.0.5...v1.1.0-beta.1 changelog](../../compare/v1.0.5...v1.1.0-beta.1)

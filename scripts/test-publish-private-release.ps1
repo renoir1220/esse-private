@@ -119,6 +119,10 @@ try {
   if (-not $global:EssePublishTestExists -or $global:EssePublishTestDraft) {
     throw "The fake release was not finalized."
   }
+  $expectedPrerelease = $tag -like "*-*"
+  if ($global:EssePublishTestPrerelease -ne $expectedPrerelease) {
+    throw "The fake release prerelease state does not match the tag."
+  }
   $expectedNames = @(
     $windowsAsset,
     $macosAsset,

@@ -840,7 +840,7 @@ function GeneralSettings(props: SettingsProps) {
     </section>
     <section className="settings-section">
       <div className="settings-copy"><strong>并发任务数</strong><span>Esse 同时向内置图片服务提交的最大任务数，默认 10。</span></div>
-      <div className="settings-inline-control"><input type="number" min="1" max="12" value={concurrency} onChange={(event) => setConcurrency(Number(event.target.value))} /><button type="button" disabled={props.busy || !Number.isFinite(concurrency) || concurrency < 1 || concurrency > 12 || concurrency === props.state.esseService.concurrency} onClick={() => void props.apply(() => window.esse.setEsseConcurrency(concurrency), '并发任务数已更新')}>保存</button></div>
+      <div className="settings-inline-control"><input type="number" min="1" step="1" value={concurrency} onChange={(event) => setConcurrency(Number(event.target.value))} /><button type="button" disabled={props.busy || !Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency === props.state.esseService.concurrency} onClick={() => void props.apply(() => window.esse.setEsseConcurrency(concurrency), '并发任务数已更新')}>保存</button></div>
     </section>
     <section className="settings-section stacked">
       <div className="settings-copy"><strong>连接 Agent</strong><span>复制完整配置提示词，粘贴到 WorkBuddy 或其他 Agent 后直接发送。Agent 会保留已有 MCP，并添加 Esse。</span></div>
