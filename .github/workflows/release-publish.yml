@@ -41,7 +41,7 @@ jobs:
     runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && 'windows-latest' || fromJSON('["self-hosted","esse-private-windows-x64"]') }}
     steps:
       - name: Verify source build workflow
-        shell: powershell
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -91,7 +91,7 @@ jobs:
           ref: ${{ github.sha }}
           path: .release-tools
       - name: Verify tag and build commit
-        shell: powershell
+        shell: pwsh
         run: |
           $tagCommit = git rev-list -n 1 $env:RELEASE_TAG
           if ([string]::IsNullOrWhiteSpace($env:BUILD_COMMIT)) {
@@ -111,16 +111,16 @@ jobs:
           run-id: ${{ env.BUILD_RUN_ID }}
           github-token: ${{ github.token }}
       - name: Verify immutable build provenance
-        shell: powershell
+        shell: pwsh
         run: node scripts/verify-private-release-provenance.mjs $env:RELEASE_TAG $env:BUILD_COMMIT
       - name: Create checksums and Sidecar metadata
-        shell: powershell
+        shell: pwsh
         run: node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG
       - name: Publish or safely resume draft release
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLISHER_SCRIPT: ${{ github.event_name == 'workflow_dispatch' && '.release-tools/scripts/publish-private-release.ps1' || 'scripts/publish-private-release.ps1' }}
-        shell: powershell
+        shell: pwsh
         run: |
           $publisher = Join-Path $env:GITHUB_WORKSPACE $env:PUBLISHER_SCRIPT
           & $publisher `
