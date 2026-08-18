@@ -33,6 +33,10 @@ describe('Provider settings', () => {
     expect(await store.listCustomProfiles()).toEqual([]);
     expect(await store.hasEsseKey()).toBe(true);
 
+    await expect(store.saveProvider({ ...draft, id: saved.id, concurrency: 24 })).resolves.toMatchObject({ concurrency: 24 });
+    await expect(store.saveProvider({ ...draft, id: saved.id, concurrency: 1.5 })).rejects.toThrow(/正整数/);
+    await expect(store.saveProvider({ ...draft, id: saved.id, concurrency: 0 })).rejects.toThrow(/正整数/);
+
     await store.deleteProvider(saved.id);
     expect(await store.listProfiles()).toEqual([]);
     await expect(store.getApiKey(saved.id)).rejects.toThrow(/没有可用的 Key/);
@@ -66,6 +70,9 @@ describe('Provider settings', () => {
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
       expect.objectContaining({ providerType: 'esse-managed', concurrency: 7 }),
     ]));
+    await expect(store.saveEsseConcurrency(24)).resolves.toBe(24);
+    await expect(store.saveEsseConcurrency(1.5)).rejects.toThrow(/正整数/);
+    await expect(store.saveEsseConcurrency(0)).rejects.toThrow(/正整数/);
   });
 
   it('keeps a user-created Provider available only through advanced settings', async () => {

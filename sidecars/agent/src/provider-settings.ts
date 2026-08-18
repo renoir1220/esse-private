@@ -118,13 +118,14 @@ export class ProviderSettingsStore {
     const id = input.id?.trim() || randomUUID();
     const existing = settings.providers.find((entry) => entry.id === id);
     const offerings = input.offerings.map((offering) => normalizeOffering(offering, id));
+    const concurrency = normalizeConcurrency(input.concurrency);
     const stored: StoredProviderProfile = {
       id,
       displayName,
       tierName,
       baseUrl,
       adapterId: input.adapterId,
-      concurrency: normalizeConcurrency(input.concurrency),
+      concurrency,
       offerings,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
@@ -195,8 +196,8 @@ function providerInput(profile: ProviderProfile, concurrency: number): SaveProvi
 }
 
 function normalizeConcurrency(value: number): number {
-  if (!Number.isFinite(value)) throw new Error('并发数必须是 1 到 12 之间的整数。');
-  return Math.max(1, Math.min(12, Math.trunc(value)));
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error('并发数必须是正整数。');
+  return value;
 }
 
 function normalizeOffering(value: OfferingConfig, profileId: string): OfferingConfig {
