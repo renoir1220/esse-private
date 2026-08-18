@@ -244,8 +244,6 @@ export interface ModifyBatchInput {
 
 export interface DesktopState {
   configured: boolean;
-  esseService: EsseServiceStatus;
-  onboarding: OnboardingStatus;
   providers: ProviderProfile[];
   offerings: OfferingSummary[];
   defaultOfferingId?: string;
@@ -267,6 +265,16 @@ export interface OnboardingStatus {
   dismissed: boolean;
 }
 
+export interface ManagedDesktopState extends DesktopState {
+  esseService: EsseServiceStatus;
+  onboarding: OnboardingStatus;
+}
+
+export type DesktopStateChange =
+  | { type: 'batch-upsert'; batch: BatchSnapshot; images: SavedImage[]; removedImageIds: string[]; activeBatchId?: string }
+  | { type: 'batch-delete'; batchId: string; activeBatchId?: string }
+  | { type: 'activate'; activeBatchId: string };
+
 export interface McpStatus {
   available: boolean;
   endpoint: string;
@@ -275,21 +283,21 @@ export interface McpStatus {
 
 export interface EsseDesktopBridge {
   readonly platform: string;
-  getState(): Promise<DesktopState>;
-  refresh(): Promise<DesktopState>;
-  connectEsseKey(apiKey: string): Promise<DesktopState>;
-  setEsseConcurrency(concurrency: number): Promise<DesktopState>;
-  dismissOnboarding(): Promise<DesktopState>;
-  saveProvider(input: SaveProviderInput): Promise<DesktopState>;
-  deleteProvider(id: string): Promise<DesktopState>;
+  getState(): Promise<ManagedDesktopState>;
+  refresh(): Promise<ManagedDesktopState>;
+  connectEsseKey(apiKey: string): Promise<ManagedDesktopState>;
+  setEsseConcurrency(concurrency: number): Promise<ManagedDesktopState>;
+  dismissOnboarding(): Promise<ManagedDesktopState>;
+  saveProvider(input: SaveProviderInput): Promise<ManagedDesktopState>;
+  deleteProvider(id: string): Promise<ManagedDesktopState>;
   testProvider(input: { baseUrl: string; profileId?: string; apiKey?: string }): Promise<{ models: string[]; requestId?: string }>;
-  modifyBatch(input: ModifyBatchInput): Promise<DesktopState>;
-  cancelQueued(batchId: string): Promise<DesktopState>;
-  retryJobs(batchId: string, jobIds: string[], allowUnknownCharge?: boolean): Promise<DesktopState>;
-  deleteImages(batchId: string, imageIds: string[]): Promise<DesktopState>;
-  deleteBatch(batchId: string): Promise<DesktopState>;
-  activateBatch(batchId: string): Promise<DesktopState>;
-  setDefaultOffering(offeringId: string): Promise<DesktopState>;
+  modifyBatch(input: ModifyBatchInput): Promise<ManagedDesktopState>;
+  cancelQueued(batchId: string): Promise<ManagedDesktopState>;
+  retryJobs(batchId: string, jobIds: string[], allowUnknownCharge?: boolean): Promise<ManagedDesktopState>;
+  deleteImages(batchId: string, imageIds: string[]): Promise<ManagedDesktopState>;
+  deleteBatch(batchId: string): Promise<ManagedDesktopState>;
+  activateBatch(batchId: string): Promise<ManagedDesktopState>;
+  setDefaultOffering(offeringId: string): Promise<ManagedDesktopState>;
   openImage(id: string): Promise<void>;
   revealImage(id: string): Promise<void>;
   getImageMetadata(id: string): Promise<ImageMetadata>;
@@ -299,7 +307,7 @@ export interface EsseDesktopBridge {
   saveImage(id: string): Promise<string | undefined>;
   openBatchFolder(batchId: string): Promise<void>;
   copyAgentSetupPrompt(): Promise<void>;
-  onStateChanged(callback: (state: DesktopState) => void): () => void;
+  onStateChanged(callback: (change: DesktopStateChange) => void): () => void;
   onNavigate(callback: (input: { tab: 'batches' | 'settings'; batchId?: string }) => void): () => void;
   reportReady(details: { title: string; bridgeAvailable: boolean }): void;
 }
