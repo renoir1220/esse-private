@@ -22,4 +22,6 @@ Any pull request that carries an `upstream/main` merge must itself be merged wit
 
 The verifier requires the current `upstream/main` to be an ancestor of the private commit and rejects every changed path outside the reviewed overlay. A shared change must therefore land in Community first; adding a new overlay path is an architecture decision, not a conflict-resolution shortcut.
 
+Private runtime and onboarding fields extend the Community `DesktopState` through `ManagedDesktopState`. Do not add edition-only required fields to the shared base state: Community state reducers and tests must remain valid on their own, while generic shared reducers preserve downstream extensions.
+
 Never push private commits to `upstream`. Configure a separate private `origin` before publishing this repository.

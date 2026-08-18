@@ -32,13 +32,14 @@ import { retryAllFailedSelection } from './batch-actions';
 import { batchLibraryProgress, batchLibraryState, filterAndGroupBatches, type BatchLibraryState } from './batch-library';
 import { errorOriginLabel } from './error-display';
 import { galleryAssets, selectableAssets, type GalleryAsset } from './gallery-assets';
+import { applyDesktopStateChange } from './desktop-state-change';
 import { initialImageZoom, zoomImageAtPoint } from './image-zoom';
 import { shouldShowOnboarding } from './onboarding-state';
 import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
 import { blankOffering, createCustomProviderDraft, DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
 import { SelectMenu } from './select-menu';
-import type { BatchSnapshot, DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
+import type { BatchSnapshot, ManagedDesktopState as DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
 import { formatWindowTitle } from './window-title';
 import packageMetadata from '../package.json';
 import product from '../product.json';
@@ -154,16 +155,15 @@ function App() {
       lastDesktopActivation.current = next.activeBatchId;
       setError(next.error);
     }).catch((cause) => setError(cleanError(cause))).finally(() => setLoading(false));
-    const unsubscribeState = window.esse.onStateChanged((next) => {
-      setState(next);
-      setError(next.error);
-      if (next.activeBatchId && next.activeBatchId !== lastDesktopActivation.current) {
-        lastDesktopActivation.current = next.activeBatchId;
-        setActiveBatchId(next.activeBatchId);
+    const unsubscribeState = window.esse.onStateChanged((change) => {
+      setState((current) => applyDesktopStateChange(current, change));
+      if (change.activeBatchId && change.activeBatchId !== lastDesktopActivation.current) {
+        lastDesktopActivation.current = change.activeBatchId;
+        setActiveBatchId(change.activeBatchId);
         setTab('batches');
         setSelectedImageIds(new Set());
-      } else {
-        setActiveBatchId((current) => next.batches.some((batch) => batch.id === current) ? current : next.activeBatchId || next.batches[0]?.id);
+      } else if (change.type === 'batch-delete') {
+        setActiveBatchId((current) => current === change.batchId ? change.activeBatchId : current);
       }
     });
     const unsubscribeNavigation = window.esse.onNavigate(({ tab: nextTab, batchId }) => {
