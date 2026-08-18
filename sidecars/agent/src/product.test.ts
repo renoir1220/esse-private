@@ -35,7 +35,8 @@ describe('desktop product profile', () => {
     expect(buildWorkflow).toContain("inputs.runner_mode == 'hosted'");
     expect(buildWorkflow).toContain('Verify independent Esse tag on Windows');
     expect(buildWorkflow).toContain('Verify independent Esse tag on macOS');
-    expect(buildWorkflow).toContain('shell: powershell');
+    expect(buildWorkflow).toContain('shell: pwsh');
+    expect(buildWorkflow).toContain('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop');
     expect(buildWorkflow).toContain('shell: node {0}');
     expect(buildWorkflow).toContain('working-directory: ${{ github.workspace }}');
     expect(buildWorkflow).not.toContain('working-directory: ../..');

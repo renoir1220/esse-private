@@ -55,7 +55,7 @@ jobs:
       - name: Verify independent Esse tag on Windows
         if: matrix.platform == 'windows'
         id: identity-windows
-        shell: powershell
+        shell: pwsh
         run: |
           $packageVersion = node -p "require('./package.json').version"
           if ($env:RELEASE_TAG -ne "v$packageVersion") {
@@ -97,7 +97,7 @@ jobs:
       - name: Resolve Windows signing mode
         if: matrix.platform == 'windows'
         id: windows-signing
-        shell: powershell
+        shell: pwsh
         env:
           WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -117,7 +117,7 @@ jobs:
           }
       - name: Configure Windows Authenticode signing
         if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'true'
-        shell: powershell
+        shell: pwsh
         env:
           WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
@@ -197,8 +197,9 @@ jobs:
         run: npm run verify:signatures
       - name: Verify unsigned Windows artifacts
         if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'false'
-        shell: powershell
+        shell: pwsh
         run: |
+          Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
           $product = Get-Content -Raw -Encoding UTF8 'product.json' | ConvertFrom-Json
           $targets = @(
             (Join-Path (Get-Location) ("out\{0}-win32-x64\{1}.exe" -f $product.displayName, $product.executableName)),
