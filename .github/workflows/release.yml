@@ -1,4 +1,4 @@
-name: Esse release build
+name: Esse release
 
 on:
   push:
@@ -9,14 +9,10 @@ on:
         description: Existing release tag matching the private Sidecar version
         required: true
         type: string
-      runner_mode:
-        description: Use owned runners by default; select hosted only as an explicit fallback
-        required: true
-        default: self
-        type: choice
-        options:
-          - self
-          - hosted
+
+concurrency:
+  group: esse-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -32,13 +28,11 @@ jobs:
         include:
           - platform: windows
             arch: x64
-            selfRunner: '["self-hosted","esse-private-windows-x64"]'
-            hostedRunner: windows-latest
+            runner: '["self-hosted","esse-private-windows-x64"]'
           - platform: macos
             arch: arm64
-            selfRunner: '["self-hosted","esse-private-macos-arm64"]'
-            hostedRunner: macos-15
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && inputs.runner_mode == 'hosted' && matrix.hostedRunner || fromJSON(matrix.selfRunner) }}
+            runner: '["self-hosted","esse-private-macos-arm64"]'
+    runs-on: ${{ fromJSON(matrix.runner) }}
     defaults:
       run:
         working-directory: sidecars/agent
@@ -240,3 +234,73 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
+
+  publish:
+    needs: package
+    runs-on: [self-hosted, esse-private-windows-x64]
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ env.RELEASE_TAG }}
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: esse-release-*
+          path: release
+          merge-multiple: true
+      - name: Verify immutable build provenance
+        shell: pwsh
+        run: |
+          $tagCommit = git rev-list -n 1 $env:RELEASE_TAG
+          node scripts/verify-private-release-provenance.mjs $env:RELEASE_TAG $tagCommit
+      - name: Create checksums and Sidecar metadata
+        shell: pwsh
+        run: node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = $env:RELEASE_TAG
+          $metadata = Get-Content -Raw -Encoding UTF8 .\release\sidecar-latest.json | ConvertFrom-Json
+          $assetNames = @(
+            [string]$metadata.windowsX64Asset,
+            [string]$metadata.macosArm64Asset,
+            'sidecar-latest.json',
+            'checksums.txt'
+          )
+          $assets = foreach ($name in $assetNames) {
+            $candidate = Join-Path .\release $name
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+              throw "Missing release asset: $candidate"
+            }
+            (Resolve-Path -LiteralPath $candidate).Path
+          }
+          $viewOutput = (& gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" 2>&1 | Out-String)
+          $viewExit = $LASTEXITCODE
+          if ($viewExit -eq 0) {
+            throw "GitHub Release $tag already exists; refusing to overwrite it."
+          }
+          if ($viewOutput -notmatch 'HTTP 404|Not Found') {
+            throw "Unable to verify whether GitHub Release $tag exists: $($viewOutput.Trim())"
+          }
+          $arguments = @(
+            'release', 'create', $tag
+          ) + $assets + @(
+            '--repo', $env:GITHUB_REPOSITORY,
+            '--verify-tag',
+            '--title', "Esse $tag",
+            '--notes-file', (Resolve-Path -LiteralPath .\.github\release-notes-prefix.md).Path
+          )
+          if ($tag -match '-') { $arguments += '--prerelease' }
+          $publishOutput = (& gh @arguments 2>&1 | Out-String)
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release publish failed: $($publishOutput.Trim())"
+          }

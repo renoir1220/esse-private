@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -12,8 +12,8 @@ const packageJson = JSON.parse(
 const product = JSON.parse(
   await readFile(path.join(repositoryRoot, "sidecars", "agent", "product.json"), "utf8")
 );
-const publishWorkflow = await readFile(
-  path.join(repositoryRoot, ".github", "workflows", "release-publish.yml"),
+const releaseWorkflow = await readFile(
+  path.join(repositoryRoot, ".github", "workflows", "release.yml"),
   "utf8"
 );
 const tag = `v${packageJson.version}`;
@@ -55,12 +55,20 @@ assert.equal(metadata.windowsX64Asset.endsWith(".exe"), true);
 assert.equal(metadata.macosArm64Asset.endsWith(".dmg"), true);
 const checksums = await readFile(path.join(releaseRoot, "checksums.txt"), "utf8");
 assert.equal(checksums.trim().split(/\r?\n/).length, 2);
-assert.match(publishWorkflow, /\$run\.head_repository\.full_name -ne \$env:GITHUB_REPOSITORY/);
-assert.match(publishWorkflow, /\$run\.event -eq 'workflow_dispatch'/);
-assert.match(publishWorkflow, /\$run\.head_branch -ne \$repository\.default_branch/);
-assert.match(publishWorkflow, /BUILD_COMMIT=\$tagCommit/);
-assert.match(publishWorkflow, /name: Checkout recovery publisher/);
-assert.match(publishWorkflow, /path: \.release-tools/);
-assert.match(publishWorkflow, /PUBLISHER_SCRIPT:.*workflow_dispatch/);
+assert.match(releaseWorkflow, /name: Esse release/);
+assert.match(releaseWorkflow, /needs: package/);
+assert.match(releaseWorkflow, /actions\/download-artifact/);
+assert.match(releaseWorkflow, /verify-private-release-provenance\.mjs/);
+assert.match(releaseWorkflow, /create-private-release-metadata\.mjs/);
+assert.match(releaseWorkflow, /refusing to overwrite it/);
+assert.match(releaseWorkflow, /contents: write/);
+assert.match(releaseWorkflow, /retention-days: 1/);
+assert.match(releaseWorkflow, /esse-private-windows-x64/);
+assert.match(releaseWorkflow, /esse-private-macos-arm64/);
+assert.equal((releaseWorkflow.match(/actions\/upload-artifact/g) ?? []).length, 1);
+assert.doesNotMatch(releaseWorkflow, /workflow_run:|build_run_id|run-id:|github-token:/);
+assert.doesNotMatch(releaseWorkflow, /Start-Sleep|--clobber|publish-private-release/);
+assert.doesNotMatch(releaseWorkflow, /windows-latest|macos-15|runner_mode/);
+await assert.rejects(access(path.join(repositoryRoot, ".github", "workflows", "release-publish.yml")));
 
 console.log(JSON.stringify({ status: "ok", tag, targets: targets.length }));
