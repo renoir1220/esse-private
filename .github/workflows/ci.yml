@@ -344,4 +344,4 @@ jobs:
           name: esse-private-validation-${{ steps.receipt.outputs.tree }}
           path: ${{ steps.receipt.outputs.receipt }}
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 1

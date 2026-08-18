@@ -21,6 +21,7 @@ describe('desktop product profile', () => {
   });
 
   it('allows unsigned Windows and ad-hoc macOS releases but rejects partial publisher signing configuration', async () => {
+    const ciWorkflow = await readFile(path.resolve('../..', '.github/workflows/ci.yml'), 'utf8');
     const buildWorkflow = await readFile(path.resolve('../..', '.github/workflows/release.yml'), 'utf8');
     const publishWorkflow = await readFile(path.resolve('../..', '.github/workflows/release-publish.yml'), 'utf8');
     expect(buildWorkflow).toContain("steps.windows-signing.outputs.enabled == 'true'");
@@ -43,6 +44,8 @@ describe('desktop product profile', () => {
     expect(buildWorkflow).not.toContain('cache: npm');
     expect(buildWorkflow).not.toContain('macos-15-intel');
     expect(buildWorkflow).toContain('create-private-release-provenance.mjs');
+    expect(ciWorkflow).toContain('retention-days: 1');
+    expect(buildWorkflow).toContain('retention-days: 1');
     expect(publishWorkflow).toContain('workflow_run:');
     expect(publishWorkflow).toContain('actions/download-artifact');
     expect(publishWorkflow).toContain('verify-private-release-provenance.mjs');
