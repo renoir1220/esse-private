@@ -26,11 +26,11 @@ describe('Provider settings', () => {
     expect(await store.getApiKey(saved.id)).toBe('private-provider-key');
     expect(await readFile(filePath, 'utf8')).not.toContain('private-provider-key');
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ providerName: 'Esse', providerType: 'esse-managed', tierName: '内置', configured: true, priceMicros: 0, price: { mode: 'unknown', currency: 'CNY' } }),
+      expect.objectContaining({ providerName: '兔子', providerType: 'tuzi-json-images', tierName: 'default', configured: true, priceMicros: 0, price: { mode: 'unknown', currency: 'CNY' } }),
       expect.objectContaining({ canonicalModelId: 'image2-v', providerModelId: 'gpt-image-2', displayName: 'image2-v' }),
       expect.objectContaining({ canonicalModelId: 'gemini-3-pro-image-preview-4k', providerModelId: 'gemini-3-pro-image-preview-4k' }),
     ]));
-    expect(await store.listCustomProfiles()).toEqual([]);
+    expect(await store.listCustomProfiles()).toEqual([expect.objectContaining({ displayName: '兔子', tierName: 'default' })]);
     expect(await store.hasEsseKey()).toBe(true);
 
     await expect(store.saveProvider({ ...draft, id: saved.id, concurrency: 24 })).resolves.toMatchObject({ concurrency: 24 });
@@ -42,7 +42,7 @@ describe('Provider settings', () => {
     await expect(store.getApiKey(saved.id)).rejects.toThrow(/没有可用的 Key/);
   });
 
-  it('tests and provisions a single Esse Key without exposing the managed connection as a custom Provider', async () => {
+  it('tests and provisions a single Esse Key as the preconfigured Tuzi Provider', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'esse-managed-key-'));
     temporaryDirectories.push(directory);
     const credentials = new MemoryCredentials();
@@ -60,15 +60,15 @@ describe('Provider settings', () => {
     expect(saved.concurrency).toBe(10);
     expect(await store.getEsseConcurrency()).toBe(10);
     expect(await store.hasEsseKey()).toBe(true);
-    expect(await store.listCustomProfiles()).toEqual([]);
+    expect(await store.listCustomProfiles()).toEqual([expect.objectContaining({ id: ESSE_MANAGED_PROVIDER_ID, displayName: '兔子', tierName: 'default' })]);
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ providerName: 'Esse', providerType: 'esse-managed', configured: true }),
+      expect.objectContaining({ providerName: '兔子', providerType: 'tuzi-json-images', tierName: 'default', configured: true }),
     ]));
 
     await expect(store.saveEsseConcurrency(7)).resolves.toBe(7);
     expect(await store.getEsseConcurrency()).toBe(7);
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ providerType: 'esse-managed', concurrency: 7 }),
+      expect.objectContaining({ providerType: 'tuzi-json-images', concurrency: 7 }),
     ]));
     await expect(store.saveEsseConcurrency(24)).resolves.toBe(24);
     await expect(store.saveEsseConcurrency(1.5)).rejects.toThrow(/正整数/);
@@ -106,11 +106,11 @@ describe('Provider settings', () => {
     expect(await store.listProfiles()).toEqual(expect.arrayContaining([expect.objectContaining({ id: legacy.id, concurrency: 10 })]));
     await expect(store.saveEsseKey('replacement-key')).resolves.toMatchObject({ id: legacy.id, concurrency: 10 });
     expect(await store.listOfferings()).toEqual(expect.arrayContaining([
-      expect.objectContaining({ providerType: 'esse-managed', concurrency: 10, configured: true }),
+      expect.objectContaining({ providerType: 'tuzi-json-images', concurrency: 10, configured: true }),
     ]));
   });
 
-  it('migrates an existing managed profile to the current model catalog without carrying built-in prices', async () => {
+  it('preserves a managed Provider model list after the user disables a model', async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), 'esse-managed-catalog-migration-'));
     temporaryDirectories.push(directory);
     const store = new ProviderSettingsStore(path.join(directory, 'providers.json'), new MemoryCredentials() as unknown as CredentialStore);
@@ -122,12 +122,60 @@ describe('Provider settings', () => {
     const saved = await store.saveProvider(legacy);
 
     const profile = await store.getProfile(saved.id);
-    expect(profile.offerings).toHaveLength(7);
-    expect(profile.offerings).toEqual(expect.arrayContaining([
-      expect.objectContaining({ displayName: 'image2-v', canonicalModelId: 'image2-v', providerModelId: 'gpt-image-2' }),
-      expect.objectContaining({ displayName: 'gemini-3-pro-image-preview-4k' }),
-    ]));
-    expect(profile.offerings.every((offering) => offering.price.mode === 'unknown' && offering.price.amount === undefined)).toBe(true);
+    expect(profile.offerings).toHaveLength(1);
+    expect(profile.offerings[0]).toEqual(expect.objectContaining({ displayName: 'GPT-Image 2', providerModelId: 'gpt-image-2', price: { mode: 'per_request', currency: 'CNY', amount: 0.035, note: 'legacy built-in price' } }));
+  });
+
+  it('renames the untouched legacy managed profile without restoring removed models', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'esse-managed-presentation-migration-'));
+    temporaryDirectories.push(directory);
+    const store = new ProviderSettingsStore(path.join(directory, 'providers.json'), new MemoryCredentials() as unknown as CredentialStore);
+    const legacy = createTuziProviderDraft('tuzi-default');
+    legacy.id = ESSE_MANAGED_PROVIDER_ID;
+    legacy.displayName = 'Esse';
+    legacy.tierName = '内置';
+    legacy.offerings = [legacy.offerings[0]];
+
+    await store.saveProvider(legacy);
+
+    const profile = await store.getProfile(ESSE_MANAGED_PROVIDER_ID);
+    expect(profile).toEqual(expect.objectContaining({ displayName: '兔子', tierName: 'default' }));
+    expect(profile.offerings).toHaveLength(1);
+  });
+
+  it('publishes managed Provider URL and model edits through the live offering registry', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'esse-managed-live-offerings-'));
+    temporaryDirectories.push(directory);
+    const store = new ProviderSettingsStore(path.join(directory, 'providers.json'), new MemoryCredentials() as unknown as CredentialStore);
+    const saved = await store.saveEsseKey('customer-key');
+    const retained = saved.offerings[0];
+    const added = {
+      ...saved.offerings[1],
+      id: '',
+      canonicalModelId: 'new-image-model',
+      providerModelId: 'new-image-model',
+      displayName: 'New Image Model',
+    };
+
+    const edited = await store.saveProvider({
+      id: saved.id,
+      displayName: saved.displayName,
+      tierName: saved.tierName,
+      baseUrl: 'https://images.example',
+      adapterId: saved.adapterId,
+      concurrency: saved.concurrency,
+      offerings: [retained, added],
+    });
+
+    expect(edited.offerings).toHaveLength(2);
+    expect(await store.listOfferings()).toEqual([
+      expect.objectContaining({ id: retained.id, providerName: '兔子', configured: true }),
+      expect.objectContaining({ canonicalModelId: 'new-image-model', providerModelId: 'new-image-model', configured: true }),
+    ]);
+    await expect(store.resolveOffering(edited.offerings[1].id)).resolves.toMatchObject({
+      profile: { baseUrl: 'https://images.example' },
+      offering: { providerModelId: 'new-image-model' },
+    });
   });
 
   it('requires HTTPS except for an explicit loopback Provider', async () => {

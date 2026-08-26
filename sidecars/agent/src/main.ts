@@ -441,12 +441,9 @@ function registerIpc(): void {
   ipcMain.handle('esse-key:connect', async (_event, apiKey: unknown) => {
     if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('请输入 Esse Key。');
     await providerSettings.testEsseKey(apiKey, providerNetwork.fetch);
-    await providerSettings.saveEsseKey(apiKey);
+    const saved = await providerSettings.saveEsseKey(apiKey);
     const currentDefault = await desktopSettings.getDefaultOfferingId();
-    if (!currentDefault) {
-      const managedDefault = (await batchManager.offerings()).find((offering) => offering.providerType === 'esse-managed' && offering.configured);
-      if (managedDefault) await desktopSettings.setDefaultOfferingId(managedDefault.id);
-    }
+    if (!currentDefault && saved.offerings[0]) await desktopSettings.setDefaultOfferingId(saved.offerings[0].id);
     batchManager.resume();
     return loadState();
   });
@@ -612,7 +609,7 @@ async function loadState(): Promise<DesktopState> {
   };
   try {
     const [providers, offerings, esseKeyConfigured, esseConcurrency, onboardingDismissed] = await Promise.all([
-      providerSettings.listCustomProfiles(),
+      providerSettings.listProfiles(),
       batchManager.offerings(),
       providerSettings.hasEsseKey(),
       providerSettings.getEsseConcurrency(),

@@ -30,7 +30,7 @@ Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/e
 从本仓库的私有 Releases 下载与当前平台匹配的 `esse-windows-x64-*.exe` 或 `esse-macos-*-*.dmg`，校验后安装并打开 Esse。在 Esse 的设置页：
 
 1. 在首次引导中填写 Esse Key，并等待连接测试通过。
-2. 选择默认模型；高级用户也可以在“高级配置”中添加兼容 Provider。
+2. 选择默认模型；高级用户也可以在“高级配置”中编辑预置兔子 Provider、禁用或新增模型，或添加其他兼容 Provider。
 3. 复制 Agent 配置提示词，粘贴到 WorkBuddy 或其他 Agent 后直接发送。
 
 之后直接对 Agent 说“用 Esse 生成图片”。Agent 把任务交给 Esse 后应立即返回；除非用户明确要求查看或导出结果，否则不应把产物复制回聊天工作区，也不应反复播报价格和进度。

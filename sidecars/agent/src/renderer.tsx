@@ -37,7 +37,7 @@ import { initialImageZoom, zoomImageAtPoint } from './image-zoom';
 import { shouldShowOnboarding } from './onboarding-state';
 import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
-import { blankOffering, createCustomProviderDraft, DEFAULT_ESSE_CONCURRENCY } from './provider-catalog';
+import { blankOffering, createCustomProviderDraft, createTuziProviderDraft, DEFAULT_ESSE_CONCURRENCY, offeringFromTuziModel, TUZI_PROVIDER_PRESETS, tuziProviderPresetForDraft } from './provider-catalog';
 import { SelectMenu } from './select-menu';
 import type { BatchSnapshot, ManagedDesktopState as DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
 import { formatWindowTitle } from './window-title';
@@ -534,7 +534,7 @@ function BatchWorkspace(props: {
         <SelectMenu
           className="model-select-control"
           value={offeringId}
-          options={props.offerings.map((item) => ({ value: item.id, label: item.displayName }))}
+          options={props.offerings.map((item) => ({ value: item.id, label: offeringOptionLabel(item) }))}
           onChange={setOfferingId}
           ariaLabel={`选择修改模型，当前 ${offering.displayName}`}
           placement="top"
@@ -855,10 +855,15 @@ function GeneralSettings(props: SettingsProps) {
 }
 
 function AdvancedProviderSettings(props: SettingsProps) {
-  const [draft, setDraft] = useState<ProviderDraft>(() => props.state.providers[0] ? providerDraftFromProfile(props.state.providers[0]) : createCustomProviderDraft());
+  const [draft, setDraft] = useState<ProviderDraft>(() => props.state.providers[0] ? providerDraftFromProfile(props.state.providers[0]) : createTuziProviderDraft('tuzi-default'));
   const [busyAction, setBusyAction] = useState<string>();
   const [models, setModels] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const activePreset = tuziProviderPresetForDraft(draft);
+  const configuredPresetIds = new Set(props.state.providers.flatMap((profile) => {
+    const preset = tuziProviderPresetForDraft(providerDraftFromProfile(profile));
+    return preset ? [preset.id] : [];
+  }));
 
   useEffect(() => {
     const saved = draft.id
@@ -872,14 +877,28 @@ function AdvancedProviderSettings(props: SettingsProps) {
     offerings: current.offerings.map((offering, offeringIndex) => offeringIndex === index ? { ...offering, ...patch } : offering),
   }));
 
-  const startDraft = () => {
-    setDraft(createCustomProviderDraft());
+  const startDraft = (choice: string) => {
+    const preset = TUZI_PROVIDER_PRESETS.find((entry) => entry.id === choice);
+    setDraft(preset ? createTuziProviderDraft(preset.id) : createCustomProviderDraft());
     setModels([]);
     setConfirmDelete(false);
   };
 
-  const addOffering = () => {
-    setDraft((current) => ({ ...current, offerings: [...current.offerings, blankOffering()] }));
+  const addOffering = (choice: string) => {
+    const presetModel = activePreset?.models.find((entry) => entry.catalogId === choice);
+    setDraft((current) => ({ ...current, offerings: [...current.offerings, presetModel ? offeringFromTuziModel(presetModel) : blankOffering()] }));
+  };
+
+  const addDiscoveredModel = (providerModelId: string) => {
+    const model = providerModelId.trim();
+    if (!model) return;
+    setDraft((current) => {
+      if (current.offerings.some((offering) => offering.providerModelId === model)) return current;
+      const blankIndex = current.offerings.findIndex((offering) => !offering.providerModelId.trim());
+      const offering = { ...blankOffering(), providerModelId: model, canonicalModelId: model, displayName: model };
+      if (blankIndex < 0) return { ...current, offerings: [...current.offerings, offering] };
+      return { ...current, offerings: current.offerings.map((entry, index) => index === blankIndex ? offering : entry) };
+    });
   };
 
   const save = async () => {
@@ -906,20 +925,37 @@ function AdvancedProviderSettings(props: SettingsProps) {
     setBusyAction('delete');
     try {
       await props.apply(() => window.esse.deleteProvider(draft.id!), 'Provider 配置和对应的本地密钥已删除');
-      setDraft(createCustomProviderDraft());
+      setDraft(createTuziProviderDraft('tuzi-default'));
     } finally { setBusyAction(undefined); setConfirmDelete(false); }
   };
 
   return <section className="provider-settings-layout">
     <aside className="provider-list">
-      <div className="provider-list-heading"><strong>自定义 Provider</strong><button className="compact-add" onClick={startDraft}><Plus size={14} />添加</button></div>
-      {!props.state.providers.length ? <div className="empty-mini">尚未添加高级配置</div> : null}
+      <div className="provider-list-heading"><strong>Provider</strong><SelectMenu
+        className="compact-select"
+        value=""
+        placeholder="添加"
+        ariaLabel="添加 Provider"
+        align="end"
+        leading={<Plus size={14} />}
+        options={[
+          ...TUZI_PROVIDER_PRESETS.map((preset) => ({
+            value: preset.id,
+            label: preset.label,
+            disabled: configuredPresetIds.has(preset.id),
+            description: configuredPresetIds.has(preset.id) ? '已配置' : undefined,
+          })),
+          { value: 'custom', label: '自定义' },
+        ]}
+        onChange={startDraft}
+      /></div>
+      {!props.state.providers.length ? <div className="empty-mini">尚未配置 Provider</div> : null}
       {props.state.providers.map((profile) => <button key={profile.id} className={`provider-item ${draft.id === profile.id ? 'is-active' : ''}`} onClick={() => { setDraft(providerDraftFromProfile(profile)); setModels([]); setConfirmDelete(false); }}><span className="provider-avatar">{profile.displayName.slice(0, 1)}</span><span><strong>{profile.displayName}</strong><small>{profile.tierName} · {adapterDisplayName(profile.adapterId)}</small></span><i className={profile.hasApiKey ? 'status-ok' : 'status-missing'} /></button>)}
       <div className="secure-note"><LockSimple size={14} /><span>{props.state.secureStorage}</span></div>
     </aside>
 
     <div className="provider-editor">
-      <header><h1>{draft.displayName || '新建 Provider'}{draft.tierName ? ` · ${draft.tierName}` : ''}</h1><p>仅供需要自定义兼容接口的高级用户使用。</p></header>
+      <header><h1>{draft.displayName || '新建 Provider'}{draft.tierName ? ` · ${draft.tierName}` : ''}</h1><p>Provider、API 地址和模型均可在此编辑；保存后会立即加入 Esse 和 Agent 的可用模型列表。</p></header>
       <section className="provider-form-section"><h2>连接</h2><div className="form-grid">
         <Field label="服务商名称"><input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></Field>
         <Field label="档位名称"><input value={draft.tierName} onChange={(event) => setDraft({ ...draft, tierName: event.target.value })} /></Field>
@@ -929,15 +965,31 @@ function AdvancedProviderSettings(props: SettingsProps) {
         <Field label="API Key" wide hint={draft.hasApiKey ? '留空保留现有密钥' : '只保存在当前系统用户的安全存储中'}><div className="secret-input"><input type="password" autoComplete="off" placeholder={draft.hasApiKey ? '•••••••• 已安全保存' : '粘贴 API Key'} value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} /><button type="button" onClick={() => void test()} disabled={Boolean(busyAction) || !draft.baseUrl || (!draft.hasApiKey && !draft.apiKey.trim())}>{busyAction === 'test' ? '测试中…' : '测试连接'}</button></div></Field>
       </div></section>
 
-      {models.length ? <div className="models-found"><strong>已发现模型</strong><div>{models.slice(0, 20).map((model) => <button key={model} onClick={() => updateOffering(0, { providerModelId: model, canonicalModelId: model, displayName: model })}>{model}</button>)}</div></div> : null}
+      {models.length ? <div className="models-found"><strong>已发现模型</strong><div>{models.slice(0, 20).map((model) => <button key={model} onClick={() => addDiscoveredModel(model)}>{model}</button>)}</div></div> : null}
 
-      <section className="provider-form-section models-section"><div className="offerings-heading"><span><strong>模型</strong></span><button className="compact-add" onClick={addOffering}><Plus size={14} />添加</button></div>
+      <section className="provider-form-section models-section"><div className="offerings-heading"><span><strong>模型</strong>{activePreset ? <small>预置模型可删除或追加</small> : null}</span><SelectMenu
+        className="compact-select"
+        value=""
+        placeholder="添加"
+        ariaLabel="添加模型"
+        align="end"
+        leading={<Plus size={14} />}
+        options={[
+          ...(activePreset?.models.map((model) => ({
+            value: model.catalogId,
+            label: model.displayName,
+            disabled: draft.offerings.some((offering) => offering.providerModelId === model.providerModelId),
+          })) || []),
+          { value: 'custom', label: '自定义' },
+        ]}
+        onChange={addOffering}
+      /></div>
         <div className="offering-list">{draft.offerings.map((offering, index) => <article className="offering-editor" key={offering.id || index}><span className="offering-number">{String(index + 1).padStart(2, '0')}</span><div className="offering-fields">
           <Field label="显示名称"><input value={offering.displayName} onChange={(event) => updateOffering(index, { displayName: event.target.value })} /></Field>
           <Field label="服务商模型 ID"><input value={offering.providerModelId} onChange={(event) => updateOffering(index, { providerModelId: event.target.value })} /></Field>
           <Field label="标准模型 ID"><input value={offering.canonicalModelId} onChange={(event) => updateOffering(index, { canonicalModelId: event.target.value })} /></Field>
           <SelectField label="计费"><div className="price-row"><SelectMenu value={offering.price.mode} ariaLabel={`选择模型 ${index + 1} 的计费方式`} options={[{ value: 'per_request', label: '按次' }, { value: 'token', label: '按 Token' }, { value: 'unknown', label: '未知' }]} onChange={(value) => updateOffering(index, { price: { ...offering.price, mode: value as OfferingConfig['price']['mode'] } })} /><input type="number" step="0.001" placeholder="价格" aria-label={`模型 ${index + 1} 的价格`} value={offering.price.amount ?? ''} onChange={(event) => updateOffering(index, { price: { ...offering.price, amount: event.target.value ? Number(event.target.value) : undefined } })} /><input className="currency" aria-label={`模型 ${index + 1} 的币种`} value={offering.price.currency} onChange={(event) => updateOffering(index, { price: { ...offering.price, currency: event.target.value } })} /></div></SelectField>
-        </div>{draft.offerings.length > 1 ? <button className="remove-offering" onClick={() => setDraft((current) => ({ ...current, offerings: current.offerings.filter((_, offeringIndex) => offeringIndex !== index) }))}><Trash size={14} /></button> : null}</article>)}</div>
+        </div>{draft.offerings.length > 1 ? <button className="remove-offering" aria-label={`禁用模型 ${offering.displayName || index + 1}`} title="禁用此模型" onClick={() => setDraft((current) => ({ ...current, offerings: current.offerings.filter((_, offeringIndex) => offeringIndex !== index) }))}><Trash size={14} /></button> : null}</article>)}</div>
       </section>
       <footer className="provider-actions"><div>{draft.id ? <button className={`subtle-button is-danger ${confirmDelete ? 'confirm' : ''}`} onClick={() => void remove()} disabled={Boolean(busyAction)}>{confirmDelete ? '再次点击确认删除' : '删除配置'}</button> : null}</div><button className="primary-button" onClick={() => void save()} disabled={Boolean(busyAction) || !draft.displayName || !draft.baseUrl || (!draft.id && !draft.apiKey.trim()) || draft.offerings.some((offering) => !offering.providerModelId)}>{busyAction === 'save' ? '保存中…' : '保存'}</button></footer>
     </div>
@@ -1057,7 +1109,7 @@ function formatProviderStageDuration(start: string, end?: string) {
   const finished = end ? Date.parse(end) : Date.now();
   return Number.isFinite(started) && Number.isFinite(finished) ? formatDuration(Math.max(0, finished - started)) : '—';
 }
-function offeringOptionLabel(offering: OfferingSummary): string { return `${offering.displayName}${offering.providerType === 'esse-managed' ? '' : ` · ${offering.providerName}`}`; }
+function offeringOptionLabel(offering: OfferingSummary): string { return `${offering.displayName} · ${offering.providerName} / ${offering.tierName}`; }
 function chargeText(state: BatchSnapshot['jobs'][number]['chargeState']) { return ({ charged: '已扣费', not_charged: '未扣费', unknown: '待复核' })[state]; }
 function jobErrorOriginLabel(job: BatchSnapshot['jobs'][number], providerName: string) { return errorOriginLabel({ origin: job.errorOrigin, source: job.operation === 'agent' ? 'agent' : 'provider', providerName, showProviderIdentity: product.errorAttribution.showProviderIdentity }); }
 function callSourceLabel(source: 'provider' | 'agent' | undefined, providerName: string) { if (source === 'agent') return 'Agent'; return product.errorAttribution.showProviderIdentity ? providerName : '图片服务'; }

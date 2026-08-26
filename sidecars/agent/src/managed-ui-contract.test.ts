@@ -9,11 +9,13 @@ const preload = fs.readFileSync(path.join(sourceRoot, 'preload.ts'), 'utf8');
 const main = fs.readFileSync(path.join(sourceRoot, 'main.ts'), 'utf8');
 
 describe('Managed Esse UI contract', () => {
-  it('keeps channel-specific names out of the renderer', () => {
-    expect(renderer).not.toContain('兔子');
-    expect(renderer).not.toContain('Tuzi');
+  it('keeps the preconfigured Provider editable alongside custom Providers', () => {
+    expect(renderer).toContain('TUZI_PROVIDER_PRESETS');
+    expect(renderer).toContain('Provider、API 地址和模型均可在此编辑');
     expect(renderer).toContain('高级配置');
     expect(renderer).toContain('Esse Key');
+    expect(main).toContain('providerSettings.listProfiles()');
+    expect(main).toContain('batchManager.resume();');
     expect(renderer).toContain('>高级设置</button>');
     expect(renderer).not.toContain('className="onboarding-close"');
   });
