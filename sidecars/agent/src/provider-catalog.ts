@@ -35,7 +35,9 @@ export const TUZI_PROVIDER_PRESETS: TuziProviderPreset[] = [
     models: [
       model('gpt-image-2', 'gpt-image-2', 'gpt-image-2', 'GPT-Image 2', gptImageSizes),
       model('gpt-image-2-image', 'image2-v', 'gpt-image-2', 'image2-v', gptImageSizes),
+      model('gemini-3-pro-image-preview-2k', 'gemini-3-pro-image-preview-2k', 'gemini-3-pro-image-preview-2k', 'Gemini 3 Pro Image Preview · 2K'),
       model('gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k'),
+      model('gemini-3.1-flash-image-preview-4k', 'gemini-3.1-flash-image-preview-4k', 'gemini-3.1-flash-image-preview-4k', 'gemini-3.1 Flash Image Preview · 4K'),
       model('nano-banana-2-1k', 'nano-banana-2', 'nano-banana-2', 'Nano Banana 2 · 1K'),
       model('nano-banana-2-2k', 'nano-banana-2', 'nano-banana-2-2k', 'Nano Banana 2 · 2K'),
       model('nano-banana-2-4k', 'nano-banana-2', 'nano-banana-2-4k', 'Nano Banana 2 · 4K'),
@@ -94,8 +96,8 @@ export function createEsseManagedProviderInput(apiKey?: string): SaveProviderInp
   const draft = createTuziProviderDraft('tuzi-default');
   return {
     id: ESSE_MANAGED_PROVIDER_ID,
-    displayName: 'Esse',
-    tierName: '内置',
+    displayName: '兔子',
+    tierName: 'default',
     baseUrl: draft.baseUrl,
     adapterId: draft.adapterId,
     concurrency: DEFAULT_ESSE_CONCURRENCY,

@@ -119,6 +119,12 @@ The initial import deliberately excludes the private service, user accounts, bal
 - A Provider-declared failure or expiry is surfaced as soon as the next task query observes it. Temporary task-query transport failures, rate limits, and upstream overload responses are queried again without resubmitting; an unresolved overall deadline remains an unknown-result, unknown-charge outcome requiring user review.
 - Errors before durable Provider acceptance are treated as not charged when Esse can prove no submission occurred. Ambiguous submission transport failures remain unknown, and Tuzi's `X-Oneapi-Request-Id` is retained for support diagnostics.
 
+## 2026-08-26 — unified Provider settings and stable menus
+
+- Advanced settings now presents the preconfigured Tuzi connection alongside user-added Providers. Its URL, adapter, API Key, and model rows are editable; removing a model disables it, while the preset menu and live `/v1/models` results can add it back or add a new model.
+- Provider settings are the single source of truth for the Agent-facing offering list. Saving a Provider resumes the scheduler, and MCP capability queries resolve the current list instead of a separate managed-service catalog.
+- Custom listbox menus prevent focus-induced page scrolling and contain wheel overscroll so opening a menu remains stable on macOS and Windows.
+
 ## Deferred
 
 - shared domain/provider/UI packages;

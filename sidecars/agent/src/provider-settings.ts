@@ -20,7 +20,7 @@ export class ProviderSettingsStore {
 
   async listProfiles(): Promise<ProviderProfile[]> {
     const settings = await this.read();
-    const migrated = settings.providers.map(syncEsseManagedCatalog);
+    const migrated = settings.providers.map(migrateLegacyManagedPresentation);
     if (migrated.some((profile, index) => profile !== settings.providers[index])) {
       settings.providers = migrated;
       settings.updatedAt = new Date().toISOString();
@@ -30,7 +30,10 @@ export class ProviderSettingsStore {
   }
 
   async listCustomProfiles(): Promise<ProviderProfile[]> {
-    return (await this.listProfiles()).filter((profile) => !isEsseManagedProvider(profile));
+    // Kept as a compatibility alias for older callers. Advanced settings now
+    // treats the preconfigured Tuzi profile as a normal Provider alongside
+    // user-created profiles.
+    return this.listProfiles();
   }
 
   async hasEsseKey(): Promise<boolean> {
@@ -219,15 +222,14 @@ function normalizeOffering(value: OfferingConfig, profileId: string): OfferingCo
 
 function offeringSummary(profile: ProviderProfile, offering: OfferingConfig): OfferingSummary {
   const amount = offering.price.mode === 'per_request' && Number.isFinite(offering.price.amount) ? offering.price.amount! : 0;
-  const managed = isEsseManagedProvider(profile);
   return {
     id: offering.id,
     canonicalModelId: offering.canonicalModelId,
     providerModelId: offering.providerModelId,
     displayName: offering.displayName,
-    providerName: managed ? 'Esse' : profile.displayName,
-    providerType: managed ? 'esse-managed' : profile.adapterId,
-    tierName: managed ? '内置' : profile.tierName,
+    providerName: profile.displayName,
+    providerType: profile.adapterId,
+    tierName: profile.tierName,
     concurrency: profile.concurrency,
     priceMicros: Math.max(0, Math.round(amount * 1_000_000)),
     currency: offering.price.currency,
@@ -239,20 +241,18 @@ function offeringSummary(profile: ProviderProfile, offering: OfferingConfig): Of
   };
 }
 
-function syncEsseManagedCatalog(profile: StoredProviderProfile): StoredProviderProfile {
-  if (!isEsseManagedProvider(profile)) return profile;
-  const offerings = createEsseManagedProviderInput().offerings.map((catalogOffering) => {
-    const existing = profile.offerings.find((offering) => (
-      offering.canonicalModelId === catalogOffering.canonicalModelId
-      && offering.providerModelId === catalogOffering.providerModelId
-    ));
-    return {
-      ...structuredClone(catalogOffering),
-      id: existing?.id || `${profile.id}:${catalogOffering.canonicalModelId}`,
-    };
-  });
-  if (JSON.stringify(offerings) === JSON.stringify(profile.offerings)) return profile;
-  return { ...profile, offerings, updatedAt: new Date().toISOString() };
+function migrateLegacyManagedPresentation(profile: StoredProviderProfile): StoredProviderProfile {
+  // v1.1.0-beta.3 stored the managed connection as "Esse · 内置" and
+  // continuously replaced its model list from the catalog. Preserve all
+  // user-edited URL/model data; only rename an untouched legacy record once.
+  if (
+    profile.id !== ESSE_MANAGED_PROVIDER_ID
+    || profile.displayName.trim() !== 'Esse'
+    || profile.tierName.trim() !== '内置'
+    || profile.adapterId !== 'tuzi-json-images'
+    || normalizeBaseUrl(profile.baseUrl) !== normalizeBaseUrl(ESSE_MANAGED_BASE_URL)
+  ) return profile;
+  return { ...profile, displayName: '兔子', tierName: 'default', updatedAt: new Date().toISOString() };
 }
 
 function normalizeBaseUrl(value: string): string {

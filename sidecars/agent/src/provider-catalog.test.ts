@@ -7,7 +7,9 @@ describe('Tuzi Provider catalog', () => {
     expect(TUZI_PROVIDER_PRESETS[0].models.map((model) => [model.catalogId, model.canonicalModelId, model.providerModelId, model.displayName])).toEqual([
       ['gpt-image-2', 'gpt-image-2', 'gpt-image-2', 'GPT-Image 2'],
       ['gpt-image-2-image', 'image2-v', 'gpt-image-2', 'image2-v'],
+      ['gemini-3-pro-image-preview-2k', 'gemini-3-pro-image-preview-2k', 'gemini-3-pro-image-preview-2k', 'Gemini 3 Pro Image Preview · 2K'],
       ['gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k', 'gemini-3-pro-image-preview-4k'],
+      ['gemini-3.1-flash-image-preview-4k', 'gemini-3.1-flash-image-preview-4k', 'gemini-3.1-flash-image-preview-4k', 'gemini-3.1 Flash Image Preview · 4K'],
       ['nano-banana-2-1k', 'nano-banana-2', 'nano-banana-2', 'Nano Banana 2 · 1K'],
       ['nano-banana-2-2k', 'nano-banana-2', 'nano-banana-2-2k', 'Nano Banana 2 · 2K'],
       ['nano-banana-2-4k', 'nano-banana-2', 'nano-banana-2-4k', 'Nano Banana 2 · 4K'],
@@ -15,7 +17,7 @@ describe('Tuzi Provider catalog', () => {
     ]);
     expect(TUZI_PROVIDER_PRESETS.flatMap((preset) => preset.models).every((model) => model.price.mode === 'unknown' && model.price.amount === undefined)).toBe(true);
     const draft = createTuziProviderDraft('tuzi-default');
-    expect(draft.offerings).toHaveLength(7);
+    expect(draft.offerings).toHaveLength(9);
     draft.offerings[0].displayName = 'changed';
     expect(TUZI_PROVIDER_PRESETS[0].models[0].displayName).toBe('GPT-Image 2');
     expect(draft.apiKey).toBe('');
@@ -23,7 +25,9 @@ describe('Tuzi Provider catalog', () => {
     expect(createEsseManagedProviderInput().offerings.map((offering) => offering.displayName)).toEqual([
       'GPT-Image 2',
       'image2-v',
+      'Gemini 3 Pro Image Preview · 2K',
       'gemini-3-pro-image-preview-4k',
+      'gemini-3.1 Flash Image Preview · 4K',
       'Nano Banana 2 · 1K',
       'Nano Banana 2 · 2K',
       'Nano Banana 2 · 4K',
