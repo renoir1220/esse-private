@@ -309,6 +309,7 @@ export interface EsseDesktopBridge {
   modifyBatch(input: ModifyBatchInput): Promise<ManagedDesktopState>;
   cancelQueued(batchId: string): Promise<ManagedDesktopState>;
   retryJobs(batchId: string, jobIds: string[], allowUnknownCharge?: boolean): Promise<ManagedDesktopState>;
+  retrieveTimedOut(batchId: string): Promise<ManagedDesktopState>;
   deleteImages(batchId: string, imageIds: string[]): Promise<ManagedDesktopState>;
   deleteBatch(batchId: string): Promise<ManagedDesktopState>;
   activateBatch(batchId: string): Promise<ManagedDesktopState>;
