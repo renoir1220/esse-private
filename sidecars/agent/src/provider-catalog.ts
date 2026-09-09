@@ -1,6 +1,7 @@
 import type { AdapterId, OfferingConfig, ProviderDraft, ProviderProfile, SaveProviderInput } from './types';
 
 export type TuziProviderPresetId = 'tuzi-default' | 'tuzi-microsoft' | 'tuzi-codex';
+export type SubrouterProviderPresetId = 'subrouter-default';
 
 export const ESSE_MANAGED_PROVIDER_ID = 'esse-managed';
 export const ESSE_MANAGED_BASE_URL = 'https://api.tu-zi.com';
@@ -11,7 +12,7 @@ export interface TuziModelPreset extends OfferingConfig {
 }
 
 export interface TuziProviderPreset {
-  id: TuziProviderPresetId;
+  id: string;
   label: string;
   displayName: string;
   tierName: string;
@@ -65,6 +66,37 @@ export const TUZI_PROVIDER_PRESETS: TuziProviderPreset[] = [
     models: [model('gpt-image-2', 'gpt-image-2', 'gpt-image-2', 'GPT-Image 2', gptImageSizes)],
   },
 ];
+
+export const SUBROUTER_PROVIDER_PRESETS: TuziProviderPreset[] = [
+  {
+    id: 'subrouter-default',
+    label: 'Subrouter · OpenAI 兼容',
+    displayName: 'Subrouter',
+    tierName: '智能路由',
+    baseUrl: 'https://api.43-161-200-52.sslip.io/v1',
+    adapterId: 'openai-images',
+    concurrency: 3,
+    models: [
+      model('subrouter-gpt-image-2', 'gpt-image-2', 'gpt-image-2', 'GPT-Image 2', gptImageSizes),
+      model('subrouter-gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview', 'Gemini 3.1 Flash Image Preview'),
+    ],
+  },
+];
+
+export function createSubrouterProviderDraft(id: SubrouterProviderPresetId): ProviderDraft {
+  const preset = SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.id === id);
+  if (!preset) throw new Error(`Unknown Subrouter Provider preset: ${id}`);
+  return {
+    displayName: preset.displayName,
+    tierName: preset.tierName,
+    baseUrl: preset.baseUrl,
+    adapterId: preset.adapterId,
+    concurrency: preset.concurrency,
+    apiKey: '',
+    hasApiKey: false,
+    offerings: preset.models.map(offeringFromTuziModel),
+  };
+}
 
 export function tuziProviderPresetForDraft(draft: ProviderDraft): TuziProviderPreset | undefined {
   const baseUrl = normalizeBaseUrl(draft.baseUrl);

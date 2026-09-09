@@ -38,7 +38,7 @@ import { initialImageZoom, zoomImageAtPoint } from './image-zoom';
 import { shouldShowOnboarding } from './onboarding-state';
 import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
-import { blankOffering, createCustomProviderDraft, createTuziProviderDraft, DEFAULT_ESSE_CONCURRENCY, offeringFromTuziModel, TUZI_PROVIDER_PRESETS, tuziProviderPresetForDraft } from './provider-catalog';
+import { blankOffering, createCustomProviderDraft, createSubrouterProviderDraft, createTuziProviderDraft, DEFAULT_ESSE_CONCURRENCY, offeringFromTuziModel, SUBROUTER_PROVIDER_PRESETS, TUZI_PROVIDER_PRESETS, tuziProviderPresetForDraft } from './provider-catalog';
 import { SelectMenu } from './select-menu';
 import type { BatchSnapshot, ManagedDesktopState as DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
 import { formatWindowTitle } from './window-title';
@@ -883,7 +883,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
   const [busyAction, setBusyAction] = useState<string>();
   const [models, setModels] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const activePreset = tuziProviderPresetForDraft(draft);
+  const activePreset = tuziProviderPresetForDraft(draft) || SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.displayName === draft.displayName && entry.tierName === draft.tierName && entry.adapterId === draft.adapterId && entry.baseUrl.replace(/\/+$/, '') === draft.baseUrl.replace(/\/+$/, ''));
   const configuredPresetIds = new Set(props.state.providers.flatMap((profile) => {
     const preset = tuziProviderPresetForDraft(providerDraftFromProfile(profile));
     return preset ? [preset.id] : [];
@@ -903,7 +903,8 @@ function AdvancedProviderSettings(props: SettingsProps) {
 
   const startDraft = (choice: string) => {
     const preset = TUZI_PROVIDER_PRESETS.find((entry) => entry.id === choice);
-    setDraft(preset ? createTuziProviderDraft(preset.id) : createCustomProviderDraft());
+    const subrouter = SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.id === choice);
+    setDraft(preset ? createTuziProviderDraft(preset.id as 'tuzi-default' | 'tuzi-microsoft' | 'tuzi-codex') : subrouter ? createSubrouterProviderDraft('subrouter-default') : createCustomProviderDraft());
     setModels([]);
     setConfirmDelete(false);
   };
@@ -963,7 +964,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
         align="end"
         leading={<Plus size={14} />}
         options={[
-          ...TUZI_PROVIDER_PRESETS.map((preset) => ({
+          ...[...TUZI_PROVIDER_PRESETS, ...SUBROUTER_PROVIDER_PRESETS].map((preset) => ({
             value: preset.id,
             label: preset.label,
             disabled: configuredPresetIds.has(preset.id),

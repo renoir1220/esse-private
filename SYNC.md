@@ -135,3 +135,9 @@ The initial import deliberately excludes the private service, user accounts, bal
 
 - The Tuzi adapter routes configured Gemini image preview and GPT-Image 2 offerings through `POST /v1/videos`, sends one or more reference images as `image`/`image[]`, polls `GET /v1/videos/{taskId}`, and maps the completed `video_url` (currently a PNG URL) into Esse's image result contract.
 - The Agent Sidecar batch workspace exposes `取回图片` when failed jobs retain a resumable queued or in-progress Provider task. The action requeues those jobs without resubmitting them, preserves the same task ID, and keeps a visible spinner for at least one second while retrieval proceeds.
+
+## 2026-09-09 — Subrouter OpenAI-compatible Provider preset
+
+- Provider API roots accept either a host URL or a URL ending in `/v1`; request construction normalizes the version segment before appending image endpoints. This lets Subrouter be configured from its documented API URL without producing `/v1/v1`.
+- Esse includes a built-in Subrouter preset with `gpt-image-2` and `gemini-3.1-flash-image-preview` offerings using the existing OpenAI-compatible generation/edit adapter. The API key remains in OS secure storage and is never part of this repository.
+- Live validation against the supplied Subrouter endpoint confirmed `/v1/models`, text-to-image generation, and reference-image editing for both models. `/v1/videos` was tested separately and is not enabled by this preset because the endpoint returned upstream task-fetch errors for both models; it cannot be claimed as a working replacement until the provider exposes a usable video contract.
