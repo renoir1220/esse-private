@@ -11,7 +11,11 @@ describe('desktop product profile', () => {
     expect(packageJson.name).toBe('@esse/desktop');
     expect(packageJson.private).toBe(true);
     expect(packageJson.productName).toBe(product.displayName);
-    expect(packageJson.version).toBe('1.1.0-beta.6');
+    expect(product.releaseVersionPolicy).toBe('independent-sidecar');
+    expect(packageJson.version).toMatch(/^[1-9]\d*\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
+    const packageLock = JSON.parse(await readFile(path.resolve('package-lock.json'), 'utf8')) as { version: string; packages: { '': { version: string } } };
+    expect(packageLock.version).toBe(packageJson.version);
+    expect(packageLock.packages[''].version).toBe(packageJson.version);
   });
 
   it('keeps the Esse installer and runtime identities isolated', () => {
