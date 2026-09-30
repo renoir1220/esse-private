@@ -46,6 +46,8 @@ export type BatchManagerChange =
 export class BatchManager {
   private readonly batches = new Map<string, BatchRecord>();
   private readonly createKeys = new Map<string, string>();
+  private readonly requestOperations = new Map<string, { fingerprint: string; promise: Promise<unknown> }>();
+  private mergeChain: Promise<void> = Promise.resolve();
   private readonly activeJobs = new Set<string>();
   private readonly retrievalSignals = new Map<string, AbortSignal>();
   private readonly backgroundTasks = new Set<Promise<void>>();
@@ -59,7 +61,9 @@ export class BatchManager {
 
   async initialize(): Promise<void> {
     if (this.initialized) return;
-    for (const raw of await this.options.store.loadAll()) {
+    const records = await this.options.store.loadAll();
+    const movedIds = new Set(records.flatMap((batch) => (batch.mergeCleanup ?? []).map((source) => source.id)));
+    for (const raw of records.filter((batch) => !movedIds.has(batch.id))) {
       const batch = normalizeBatch(raw);
       let changed = false;
       for (const job of batch.jobs) {
@@ -97,7 +101,14 @@ export class BatchManager {
       }
       this.batches.set(batch.id, batch);
       if (batch.requestKey) this.createKeys.set(batch.requestKey, batch.id);
+      for (const key of Object.keys(batch.createAliases ?? {})) this.createKeys.set(key, batch.id);
       if (changed) await this.options.store.save(batch);
+    }
+    for (const batch of this.batches.values()) {
+      if (batch.mergeCleanup?.length) {
+        try { await this.cleanupMergedSources(batch); }
+        catch (error) { process.stderr.write(`[esse] merge cleanup remains pending: ${error instanceof Error ? error.message : String(error)}\n`); }
+      }
     }
     await this.importLegacyImages();
     this.activeBatchId = this.list()[0]?.id;
@@ -146,9 +157,17 @@ export class BatchManager {
   }
 
   async create(input: CreateBatchInput): Promise<BatchSnapshot> {
+    return this.withRequestKey(`create:${input.requestKey}`, input, () => this.createOnce(input));
+  }
+
+  private async createOnce(input: CreateBatchInput): Promise<BatchSnapshot> {
     assertRequestKey(input.requestKey);
     const existingId = this.createKeys.get(input.requestKey);
-    if (existingId) return this.get(existingId);
+    if (existingId) {
+      const batch = this.requiredBatch(existingId);
+      assertMatchingFingerprint(batch.createAliases && Object.hasOwn(batch.createAliases, input.requestKey) ? batch.createAliases[input.requestKey] : batch.requestFingerprint, requestFingerprint(input));
+      return this.get(existingId);
+    }
     const definitions = normalizedJobs(input);
     if (definitions.length > MAX_BATCH_IMAGES) throw new Error(`A batch may contain at most ${MAX_BATCH_IMAGES} images.`);
     const offering = await this.resolveOffering(input.offeringId);
@@ -157,6 +176,7 @@ export class BatchManager {
     const batch: BatchRecord = {
       id: randomUUID(),
       requestKey: input.requestKey,
+      requestFingerprint: requestFingerprint(input),
       appendKeys: {},
       modificationKeys: {},
       mergeKeys: {},
@@ -187,10 +207,17 @@ export class BatchManager {
   }
 
   async append(input: AppendBatchInput): Promise<{ batch: BatchSnapshot; appendedJobIds: string[] }> {
+    return this.withRequestKey(`append:${input.batchId}:${input.requestKey}`, input, () => this.appendOnce(input));
+  }
+
+  private async appendOnce(input: AppendBatchInput): Promise<{ batch: BatchSnapshot; appendedJobIds: string[] }> {
     assertRequestKey(input.requestKey);
     const batch = this.requiredBatch(input.batchId);
     const existing = batch.appendKeys[input.requestKey];
-    if (existing) return { batch: snapshot(batch), appendedJobIds: existing };
+    if (existing) {
+      assertMatchingFingerprint(batch.appendFingerprints?.[input.requestKey], requestFingerprint(input));
+      return { batch: snapshot(batch), appendedJobIds: existing };
+    }
     if (!input.jobs.length || input.jobs.length > MAX_BATCH_IMAGES) throw new Error('Provide between 1 and 50 jobs.');
     for (const job of input.jobs) assertReferenceCount(job.referenceImageIds ?? []);
     if (batch.jobs.length + input.jobs.length > MAX_BATCH_IMAGES) throw new Error(`A batch may contain at most ${MAX_BATCH_IMAGES} images.`);
@@ -209,10 +236,13 @@ export class BatchManager {
       quality: input.quality,
       now,
     }));
-    batch.jobs.push(...appended);
-    batch.appendKeys[input.requestKey] = appended.map((job) => job.id);
+    const previous = { jobs: batch.jobs, appendKeys: batch.appendKeys, appendFingerprints: batch.appendFingerprints, updatedAt: batch.updatedAt };
+    batch.jobs = [...batch.jobs, ...appended];
+    batch.appendKeys = { ...batch.appendKeys, [input.requestKey]: appended.map((job) => job.id) };
+    batch.appendFingerprints = { ...batch.appendFingerprints, [input.requestKey]: requestFingerprint(input) };
     batch.updatedAt = now;
-    await this.options.store.save(batch);
+    try { await this.options.store.save(batch); }
+    catch (error) { Object.assign(batch, previous); throw error; }
     this.activeBatchId = batch.id;
     this.changed({ type: 'upsert', batch: snapshot(batch), imageIds: appended.flatMap((job) => job.referenceImageIds) });
     this.schedule();
@@ -220,10 +250,17 @@ export class BatchManager {
   }
 
   async modify(input: ModifyBatchInput): Promise<{ batch: BatchSnapshot; modifiedJobIds: string[] }> {
+    return this.withRequestKey(`modify:${input.batchId}:${input.requestKey}`, input, () => this.modifyOnce(input));
+  }
+
+  private async modifyOnce(input: ModifyBatchInput): Promise<{ batch: BatchSnapshot; modifiedJobIds: string[] }> {
     assertRequestKey(input.requestKey);
     const batch = this.requiredBatch(input.batchId);
     const existing = batch.modificationKeys[input.requestKey];
-    if (existing) return { batch: snapshot(batch), modifiedJobIds: existing };
+    if (existing) {
+      assertMatchingFingerprint(batch.modificationFingerprints?.[input.requestKey], requestFingerprint(input));
+      return { batch: snapshot(batch), modifiedJobIds: existing };
+    }
     const imageIds = unique(input.imageIds);
     if (!imageIds.length || imageIds.length > MAX_BATCH_IMAGES) throw new Error('Select between 1 and 50 images.');
     const additionalReferenceImageIds = unique(input.referenceImageIds ?? []);
@@ -291,6 +328,7 @@ export class BatchManager {
     }
     const ids = scheduled.map((job) => job.id);
     batch.modificationKeys[input.requestKey] = ids;
+    batch.modificationFingerprints = { ...batch.modificationFingerprints, [input.requestKey]: requestFingerprint(input) };
     batch.updatedAt = now;
     await this.options.store.save(batch);
     this.activeBatchId = batch.id;
@@ -424,9 +462,10 @@ export class BatchManager {
   async deleteBatch(batchId: string): Promise<void> {
     const batch = this.requiredBatch(batchId);
     if (batch.jobs.some((job) => job.status === 'queued' || job.status === 'running')) throw new Error('Cancel or finish active jobs before deleting the batch.');
-    this.batches.delete(batchId);
-    if (batch.requestKey) this.createKeys.delete(batch.requestKey);
+    await this.cleanupMergedSources(batch);
     await this.options.store.delete(batchId);
+    this.batches.delete(batchId);
+    for (const [key, id] of this.createKeys) if (id === batchId) this.createKeys.delete(key);
     this.activeBatchId = this.list()[0]?.id;
     this.changed({ type: 'delete', batchId, activeBatchId: this.activeBatchId });
   }
@@ -437,40 +476,101 @@ export class BatchManager {
     deleteSourceBatches?: boolean;
     requestKey: string;
   }): Promise<BatchSnapshot> {
+    const fingerprintInput = { ...input, deleteSourceBatches: undefined };
+    return this.withRequestKey(`merge:${input.targetBatchId}:${input.requestKey}`, fingerprintInput, () => {
+      const task = this.mergeChain.then(() => this.mergeOnce(input));
+      this.mergeChain = task.then(() => undefined, () => undefined);
+      return task;
+    });
+  }
+
+  private async mergeOnce(input: { targetBatchId: string; sourceBatchIds: string[]; deleteSourceBatches?: boolean; requestKey: string }): Promise<BatchSnapshot> {
     assertRequestKey(input.requestKey);
     const target = this.requiredBatch(input.targetBatchId);
     const replay = target.mergeKeys[input.requestKey];
-    if (replay) return snapshot(target);
+    const fingerprint = requestFingerprint({ ...input, deleteSourceBatches: undefined });
+    if (replay) {
+      assertMatchingFingerprint(target.mergeFingerprints?.[input.requestKey], fingerprint);
+      await this.cleanupMergedSources(target);
+      const sources = unique(input.sourceBatchIds).map((id) => this.batches.get(id)).filter((batch): batch is BatchRecord => Boolean(batch));
+      if (sources.length) {
+        if (sources.some((source) => source.id === target.id || !isTerminal(source))) throw new Error('Only terminal source batches can be moved.');
+        const moved: BatchRecord = { ...target, createAliases: { ...target.createAliases }, mergeFingerprints: { ...target.mergeFingerprints, [input.requestKey]: fingerprint }, mergeCleanup: sources.map((source) => ({ id: source.id, title: source.title })) };
+        for (const source of sources) {
+          Object.assign(moved.createAliases!, source.createAliases);
+          if (source.requestKey) moved.createAliases![source.requestKey] = source.requestFingerprint ?? null;
+        }
+        await this.options.store.save(moved);
+        this.batches.set(target.id, moved);
+        for (const source of sources) this.batches.delete(source.id);
+        for (const key of Object.keys(moved.createAliases!)) this.createKeys.set(key, target.id);
+        this.activeBatchId = moved.id;
+        for (const source of sources) this.changed({ type: 'delete', batchId: source.id, activeBatchId: moved.id });
+        await this.cleanupMergedSources(moved);
+        this.changed({ type: 'upsert', batch: snapshot(moved) });
+        return snapshot(moved);
+      }
+      return snapshot(target);
+    }
+    await this.cleanupMergedSources(target);
     const sources = unique(input.sourceBatchIds).map((id) => this.requiredBatch(id));
+    if (!sources.length) throw new Error('Select at least one source batch.');
     if (sources.some((batch) => batch.id === target.id)) throw new Error('The target batch cannot also be a source batch.');
     if (![target, ...sources].every(isTerminal)) throw new Error('Only terminal batches can be merged.');
     const incoming = sources.flatMap((batch) => batch.jobs);
     if (target.jobs.length + incoming.length > MAX_BATCH_IMAGES) throw new Error(`A merged batch may contain at most ${MAX_BATCH_IMAGES} images.`);
     const now = new Date().toISOString();
+    const merged: BatchRecord = {
+      ...target,
+      jobs: [...target.jobs],
+      mergeKeys: { ...target.mergeKeys },
+      mergeFingerprints: { ...target.mergeFingerprints, [input.requestKey]: fingerprint },
+      createAliases: { ...target.createAliases },
+      mergeCleanup: sources.map((source) => ({ id: source.id, title: source.title })),
+      updatedAt: now,
+    };
     const clonedIds: string[] = [];
     for (const sourceJob of incoming) {
       const id = randomUUID();
       clonedIds.push(id);
-      target.jobs.push({
+      merged.jobs.push({
         ...structuredClone(sourceJob),
         id,
-        index: target.jobs.length,
-        name: `图${target.jobs.length + 1}`,
+        index: merged.jobs.length,
+        name: `图${merged.jobs.length + 1}`,
       });
     }
-    target.mergeKeys[input.requestKey] = clonedIds;
-    target.updatedAt = now;
-    await this.options.store.save(target);
-    if (input.deleteSourceBatches) {
-      for (const source of sources) {
-        this.batches.delete(source.id);
-        if (source.requestKey) this.createKeys.delete(source.requestKey);
-        await this.options.store.delete(source.id);
-      }
+    for (const source of sources) {
+      Object.assign(merged.createAliases!, source.createAliases);
+      if (source.requestKey) merged.createAliases![source.requestKey] = source.requestFingerprint ?? null;
     }
-    this.activeBatchId = target.id;
-    this.changed({ type: 'upsert', batch: snapshot(target) });
-    return snapshot(target);
+    merged.mergeKeys[input.requestKey] = clonedIds;
+    await this.options.store.save(merged);
+    this.batches.set(merged.id, merged);
+    for (const source of sources) this.batches.delete(source.id);
+    for (const key of Object.keys(merged.createAliases!)) this.createKeys.set(key, merged.id);
+    this.activeBatchId = merged.id;
+    for (const source of sources) this.changed({ type: 'delete', batchId: source.id, activeBatchId: merged.id });
+    this.changed({ type: 'upsert', batch: snapshot(merged) });
+    await this.cleanupMergedSources(merged);
+    return snapshot(merged);
+  }
+
+  private async cleanupMergedSources(target: BatchRecord): Promise<void> {
+    const sources = target.mergeCleanup;
+    if (!sources?.length) return;
+    const images = target.jobs.flatMap((job) => [
+      ...(job.outputImageId ? [{ id: job.outputImageId, name: job.name }] : []),
+      ...job.backups.map((backup) => ({ id: backup.imageId, name: backup.name })),
+    ]);
+    await this.options.imageStore.prepareBatchFolder(target.id, target.title, images);
+    for (const source of sources) {
+      await this.options.imageStore.removeBatchFolder(source.id, source.title);
+      await this.options.store.delete(source.id);
+    }
+    const complete = { ...target, mergeCleanup: undefined };
+    await this.options.store.save(complete);
+    target.mergeCleanup = undefined;
   }
 
   async startAgentJob(batchId: string, jobId: string): Promise<BatchJob> {
@@ -501,10 +601,10 @@ export class BatchManager {
     if (job.status === 'queued') beginJob(job, job.offering || batch.offering, 'agent');
     if (job.status !== 'running') throw new Error('Agent job is not running.');
     batch.updatedAt = new Date().toISOString();
-    await this.options.store.save(batch);
-    this.changed({ type: 'upsert', batch: snapshot(batch) });
     let changedImageId: string | undefined;
     try {
+      await this.options.store.save(batch);
+      this.changed({ type: 'upsert', batch: snapshot(batch) });
       const saved = await this.options.imageStore.importFile({
         sourcePath: outputPath,
         requestId: `agent-${createHash('sha256').update(job.requestKey).digest('hex')}`,
@@ -518,8 +618,8 @@ export class BatchManager {
       throw error;
     } finally {
       batch.updatedAt = new Date().toISOString();
-      await this.options.store.save(batch);
-      this.changed({ type: 'upsert', batch: snapshot(batch), imageIds: changedImageId ? [changedImageId] : undefined });
+      try { await this.options.store.save(batch); }
+      finally { this.changed({ type: 'upsert', batch: snapshot(batch), imageIds: changedImageId ? [changedImageId] : undefined }); }
     }
     return snapshot(batch);
   }
@@ -570,12 +670,12 @@ export class BatchManager {
     if (resuming) resumeJob(job, offering);
     else beginJob(job, offering, 'provider');
     batch.updatedAt = new Date().toISOString();
-    await this.options.store.save(batch);
-    this.changed({ type: 'upsert', batch: snapshot(batch) });
     let providerSubmitted = resuming;
     let changedImageId: string | undefined;
     const retrievalSignal = this.retrievalSignals.get(jobKey);
     try {
+      await this.options.store.save(batch);
+      this.changed({ type: 'upsert', batch: snapshot(batch) });
       retrievalSignal?.throwIfAborted();
       const client = await this.options.createApiClient();
       const input = {
@@ -622,12 +722,27 @@ export class BatchManager {
       finishFailed(job, retrievalSignal?.aborted ? new Error('本次取回在 1 分钟内没有完成，可以稍后再次取回。') : error, chargeState, retryable);
     } finally {
       batch.updatedAt = new Date().toISOString();
-      await this.options.store.save(batch);
-      this.activeJobs.delete(jobKey);
-      this.retrievalSignals.delete(jobKey);
-      this.changed({ type: 'upsert', batch: snapshot(batch), imageIds: changedImageId ? [changedImageId] : undefined });
-      this.schedule();
+      try { await this.options.store.save(batch); }
+      finally {
+        this.activeJobs.delete(jobKey);
+        this.retrievalSignals.delete(jobKey);
+        this.changed({ type: 'upsert', batch: snapshot(batch), imageIds: changedImageId ? [changedImageId] : undefined });
+        this.schedule();
+      }
     }
+  }
+
+  private async withRequestKey<T>(key: string, input: unknown, operation: () => Promise<T>): Promise<T> {
+    const fingerprint = requestFingerprint(input);
+    const existing = this.requestOperations.get(key);
+    if (existing) {
+      assertMatchingFingerprint(existing.fingerprint, fingerprint);
+      return existing.promise as Promise<T>;
+    }
+    const promise = Promise.resolve().then(operation);
+    this.requestOperations.set(key, { fingerprint, promise });
+    try { return await promise; }
+    finally { if (this.requestOperations.get(key)?.promise === promise) this.requestOperations.delete(key); }
   }
 
   private schedule(): void {
@@ -994,6 +1109,17 @@ function assertLegacyEstimate(offering: OfferingSummary, count: number, approved
 
 function assertRequestKey(value: string): void {
   if (!/^[A-Za-z0-9._:-]{8,200}$/.test(value)) throw new Error('requestKey must contain 8 to 200 letters, numbers, dots, underscores, colons, or hyphens.');
+}
+
+function requestFingerprint(value: unknown): string {
+  const stable = (entry: unknown): unknown => Array.isArray(entry) ? entry.map(stable)
+    : entry && typeof entry === 'object' ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => [key, stable(child)]))
+      : entry;
+  return createHash('sha256').update(JSON.stringify(stable(value))).digest('hex');
+}
+
+function assertMatchingFingerprint(stored: string | undefined | null, incoming: string): void {
+  if (stored && stored !== incoming) throw new Error('requestKey was already used with different arguments.');
 }
 
 function derivedRequestKey(root: string, suffix: string): string {

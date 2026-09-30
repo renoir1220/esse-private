@@ -36,6 +36,7 @@
         "scripts/verify-private-overlay.mjs",
         "sidecars/agent/README.md",
         ".github/release-notes/README.md",
+        ".github/release-notes/v1.1.0-beta.7.md",
         "scripts/prepare-private-release-notes.mjs",
         "scripts/prepare-private-release-notes.test.mjs"
       ]

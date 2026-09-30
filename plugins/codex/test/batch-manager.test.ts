@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { access, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -10,8 +11,34 @@ import { BatchStore } from "../src/storage/batch-store.js";
 import { ProviderRegistry } from "../src/providers/registry.js";
 import { BatchManager } from "../src/jobs/batch-manager.js";
 import { CODEX_GENERATION_OFFERING_ID } from "../src/types.js";
+import type { BatchRecord } from "../src/types.js";
 
 const onePixelPng = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=";
+
+for (const stage of ["start", "task", "finish"] as const) test(`provider queue continues after ${stage} persistence failure`, async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "esse-persistence-failure-"));
+  const save = BatchStore.prototype.save;
+  let injected = false;
+  t.mock.method(BatchStore.prototype, "save", async function (this: BatchStore, batch: BatchRecord) {
+    const job = batch.jobs[0]!;
+    const matches = stage === "start" ? job.status === "running" && !job.providerTask
+      : stage === "task" ? job.status === "running" && Boolean(job.providerTask) : job.status === "succeeded";
+    if (!injected && matches) { injected = true; throw new Error(`injected ${stage} persistence failure`); }
+    return save.call(this, batch);
+  });
+  try {
+    const { manager } = await createManager(root, async () => Response.json({ data: [{ b64_json: onePixelPng }] }));
+    const created = await manager.create({ offeringId: "offer-default", prompt: "failure injection", requestKey: `failure-${stage}` });
+    if (stage === "finish") await assert.rejects(waitForBatch(manager, created.id), /injected finish/);
+    else await waitForBatch(manager, created.id);
+    await manager.waitForPersistence(created.id).catch((error: Error) => assert.match(error.message, /injected finish/));
+    assert(injected);
+    assert.notEqual(manager.get(created.id).jobs[0]?.status, "running");
+    const next = await manager.create({ offeringId: "offer-default", prompt: "queue continues", requestKey: `after-${stage}` });
+    assert.equal((await waitForBatch(manager, next.id)).succeeded, 1);
+    await manager.waitForPersistence(next.id);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test("persistent local batch respects profile concurrency and writes unique output files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "esse-batch-"));
@@ -43,7 +70,7 @@ test("persistent local batch respects profile concurrency and writes unique outp
     let peak = 0;
     const responseFormats: unknown[] = [];
     const fetchImpl: typeof fetch = async (_input, init) => {
-      responseFormats.push((JSON.parse(String(init?.body || "{}")) as { response_format?: unknown }).response_format);
+      responseFormats.push((await requestPayload(init)).response_format);
       active += 1;
       peak = Math.max(peak, active);
       await new Promise((resolve) => setTimeout(resolve, 25));
@@ -64,7 +91,7 @@ test("persistent local batch respects profile concurrency and writes unique outp
     assert.equal(new Set(completed.jobs.map((job) => job.outputPath)).size, 5);
     assert.equal((await readdir(completed.outputDirectory)).length, 5);
     assert.equal(completed.estimatedCost, 0.175);
-    assert.deepEqual(responseFormats, Array(5).fill("url"));
+    assert.deepEqual(responseFormats, Array(5).fill(undefined));
     for (const job of completed.jobs) {
       assert.equal(job.callHistory?.length, 1);
       assert.equal(job.callHistory?.[0]?.source, "provider");
@@ -91,7 +118,8 @@ test("each child task keeps its own prompt and zero-to-many reference images", a
     const requests: Array<{ prompt?: string; image?: unknown | unknown[] }> = [];
     const { manager } = await createManager(root, async (_input, init) => {
       if (init?.body instanceof FormData) {
-        requests.push({ prompt: String(init.body.get("prompt") || ""), image: init.body.getAll("image") });
+        const references = init.body.getAll("input_reference");
+        requests.push({ prompt: String(init.body.get("prompt") || ""), image: references.length ? references : undefined });
       } else {
         requests.push(JSON.parse(String(init?.body || "{}")) as { prompt?: string; image?: unknown | unknown[] });
       }
@@ -123,7 +151,7 @@ test("new jobs append directly to an active batch with their own model and idemp
   try {
     const requests: Array<{ model?: string; prompt?: string; size?: string }> = [];
     const { manager, store, registry, paths } = await createManager(root, async (_input, init) => {
-      requests.push(JSON.parse(String(init?.body || "{}")) as { model?: string; prompt?: string; size?: string });
+      requests.push(await requestPayload(init));
       await new Promise((resolve) => setTimeout(resolve, 20));
       return new Response(JSON.stringify({ data: [{ b64_json: onePixelPng }] }), { status: 200, headers: { "content-type": "application/json" } });
     });
@@ -505,7 +533,7 @@ test("generation size and quality survive restart and are reused by manual retry
     const payloads: Array<Record<string, unknown>> = [];
     const fetchImpl: typeof fetch = async (_input, init) => {
       if (failTransport) throw new Error("connection dropped");
-      payloads.push(JSON.parse(String(init?.body || "{}")) as Record<string, unknown>);
+      payloads.push(await requestPayload(init));
       return new Response(JSON.stringify({ data: [{ b64_json: onePixelPng }] }), { status: 200, headers: { "content-type": "application/json" } });
     };
     const { manager, store, registry, paths } = await createManager(root, fetchImpl);
@@ -553,7 +581,7 @@ test("deleting exact images removes managed files without renumbering survivors"
   }
 });
 
-test("merging batches copies managed images and preserves or deletes sources explicitly", async () => {
+test("merging batches moves managed images and always removes source batches", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "esse-merge-"));
   try {
     const { manager } = await createManager(root, async () => new Response(JSON.stringify({ data: [{ b64_json: onePixelPng }] }), { status: 200, headers: { "content-type": "application/json" } }));
@@ -566,9 +594,9 @@ test("merging batches copies managed images and preserves or deletes sources exp
     assert.notEqual(merged.jobs[1]?.id, source.jobs[0]?.id);
     assert.notEqual(merged.jobs[1]?.outputPath, sourceOutput);
     assert(merged.jobs[1]?.outputPath?.startsWith(target.outputDirectory));
-    await access(sourceOutput);
+    await assert.rejects(access(sourceOutput));
     await access(merged.jobs[1]!.outputPath!);
-    assert.equal(manager.get(source.id).id, source.id);
+    assert.throws(() => manager.get(source.id), /Unknown image batch/);
     const duplicate = await manager.mergeBatches({ targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: "merge-once" });
     assert.equal(duplicate.total, 2);
 
@@ -581,6 +609,32 @@ test("merging batches copies managed images and preserves or deletes sources exp
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("legacy keep-source merge fingerprints replay as moves without cloning again", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "esse-legacy-merge-"));
+  try {
+    const response = async () => Response.json({ data: [{ b64_json: onePixelPng }] });
+    const { manager, store } = await createManager(root, response);
+    const target = await waitForBatch(manager, (await manager.create({ offeringId: "offer-default", prompt: "target", requestKey: "legacy-target" })).id);
+    const sourceInput = { offeringId: "offer-default", prompt: "source", requestKey: "legacy-source" };
+    const source = await waitForBatch(manager, (await manager.create(sourceInput)).id);
+    const sourceRecord = (await store.loadAll()).find((batch) => batch.id === source.id)!;
+    const input = { targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: "legacy-merge", deleteSourceBatches: false };
+    await manager.mergeBatches(input);
+    const moved = (await store.loadAll())[0]!;
+    const normalized = { deleteSourceBatches: false, sourceBatchIds: [source.id], targetBatchId: target.id };
+    moved.mergeFingerprints = { [input.requestKey]: createHash("sha256").update(JSON.stringify(normalized)).digest("hex") };
+    delete moved.createAliases;
+    await store.save(moved);
+    await store.save(sourceRecord);
+    const restarted = (await createManager(root, response)).manager;
+    const replay = await restarted.mergeBatches(input);
+    assert.equal(replay.jobs.length, 2);
+    assert.throws(() => restarted.get(source.id));
+    assert.equal((await restarted.create(sourceInput)).id, target.id);
+    assert.equal((await store.loadAll()).length, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("batch library pages all records by most recent activity", async () => {
@@ -608,6 +662,42 @@ test("batch library pages all records by most recent activity", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+for (const stage of ["commit", "cleanup", "receipt"] as const) test(`merged batches recover after ${stage} failure without duplicate jobs`, async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "esse-merge-recovery-"));
+  try {
+    const response = async () => Response.json({ data: [{ b64_json: onePixelPng }] });
+    const { manager, paths } = await createManager(root, response);
+    const target = await waitForBatch(manager, (await manager.create({ offeringId: "offer-default", prompt: "target", requestKey: "target-create" })).id);
+    const sourceInput = { offeringId: "offer-default", prompt: "source", requestKey: "source-create" };
+    const source = await waitForBatch(manager, (await manager.create(sourceInput)).id);
+    const save = BatchStore.prototype.save;
+    const remove = BatchStore.prototype.delete;
+    let failed = false;
+    t.mock.method(BatchStore.prototype, "save", async function (this: BatchStore, batch: BatchRecord) {
+      const matches = stage === "commit" ? Boolean(batch.mergeCleanup?.length) : stage === "receipt" && batch.id === target.id && batch.jobs.length === 2 && !batch.mergeCleanup;
+      if (!failed && matches) { failed = true; throw new Error(`injected ${stage} merge failure`); }
+      return save.call(this, batch);
+    });
+    t.mock.method(BatchStore.prototype, "delete", async function (this: BatchStore, id: string) {
+      if (stage === "cleanup" && !failed) { failed = true; throw new Error("injected cleanup merge failure"); }
+      return remove.call(this, id);
+    });
+    const input = { targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: "recover-merge" };
+    await assert.rejects(manager.mergeBatches(input), /injected/);
+    assert.equal(manager.listPage(1, 50).total, stage === "commit" ? 2 : 1);
+    t.mock.restoreAll();
+    const { manager: restarted } = await createManager(root, response);
+    const merged = await restarted.mergeBatches(input);
+    assert.equal(merged.total, 2);
+    assert.equal(restarted.listPage(1, 50).total, 1);
+    assert.equal((await restarted.create(sourceInput)).id, target.id);
+    assert.equal((await new BatchStore(paths.batchesDir).loadAll()).length, 1);
+    await access(merged.jobs[1]!.outputPath!);
+    await restarted.deleteImages(target.id, [merged.jobs[1]!.id]);
+    assert.equal(restarted.get(target.id).total, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 async function createManager(root: string, fetchImpl: typeof fetch) {
@@ -687,4 +777,8 @@ function asyncTaskFetch(delegate: typeof fetch): typeof fetch {
     results.set(id, await response.json());
     return new Response(JSON.stringify({ id, status: "submitted" }), { status: 202, headers: { "content-type": "application/json", "x-oneapi-request-id": `request-${sequence}` } });
   };
+}
+
+async function requestPayload(init?: RequestInit): Promise<Record<string, unknown>> {
+  return init?.body instanceof FormData ? Object.fromEntries(init.body.entries()) : JSON.parse(String(init?.body || "{}"));
 }
