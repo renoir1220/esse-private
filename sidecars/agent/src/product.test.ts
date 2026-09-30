@@ -20,46 +20,37 @@ describe('desktop product profile', () => {
     expect(product.releasePrefix).toBe('esse');
   });
 
-  it('allows unsigned Windows and ad-hoc macOS releases but rejects partial publisher signing configuration', async () => {
+  it('publishes only hosted macOS ARM64 with verified signing and same-run provenance', async () => {
     const ciWorkflow = await readFile(path.resolve('../..', '.github/workflows/ci.yml'), 'utf8');
     const buildWorkflow = await readFile(path.resolve('../..', '.github/workflows/release.yml'), 'utf8');
-    expect(buildWorkflow).toContain("steps.windows-signing.outputs.enabled == 'true'");
-    expect(buildWorkflow).toContain("steps.windows-signing.outputs.enabled == 'false'");
-    expect(buildWorkflow).toContain('Windows signing secrets must be configured together or all omitted.');
+    for (const workflow of [ciWorkflow, buildWorkflow]) {
+      expect(workflow).toContain('runs-on: macos-15');
+      expect(workflow).toContain('runs-on: ubuntu-24.04');
+      expect(workflow).toContain('cache: npm');
+      expect(workflow).toContain('retention-days: 1');
+      expect(workflow).not.toMatch(/self-hosted|windows-latest|macos-15-intel|runner_mode/);
+    }
     expect(buildWorkflow).toContain("steps.macos-signing.outputs.enabled == 'true'");
     expect(buildWorkflow).toContain("steps.macos-signing.outputs.enabled == 'false'");
     expect(buildWorkflow).toContain('macOS signing and notarization secrets must be configured together or all omitted.');
-    expect(buildWorkflow).toContain('Verify ad-hoc signed macOS package');
-    expect(buildWorkflow).toContain('esse-private-windows-x64');
-    expect(buildWorkflow).toContain('esse-private-macos-arm64');
-    expect(buildWorkflow).not.toContain('runner_mode');
-    expect(buildWorkflow).not.toContain('windows-latest');
-    expect(buildWorkflow).not.toContain('macos-15');
-    expect(buildWorkflow).toContain('Verify independent Esse tag on Windows');
-    expect(buildWorkflow).toContain('Verify independent Esse tag on macOS');
-    expect(buildWorkflow).toContain('shell: pwsh');
-    expect(buildWorkflow).toContain('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop');
-    expect(buildWorkflow).toContain('shell: node {0}');
+    expect(buildWorkflow).toContain('bash scripts/verify-macos-bundle.sh arm64 --require-signed');
+    expect(buildWorkflow).toContain('bash scripts/verify-macos-bundle.sh arm64');
+    expect(buildWorkflow).not.toContain('WINDOWS_CERTIFICATE');
+    expect(buildWorkflow).toContain('git merge-base --is-ancestor');
+    expect(buildWorkflow).toContain('prepare-private-release-notes.mjs');
+    expect(buildWorkflow).not.toContain('release-notes-prefix.md');
     expect(buildWorkflow).toContain('working-directory: ${{ github.workspace }}');
-    expect(buildWorkflow).not.toContain('working-directory: ../..');
-    expect(buildWorkflow).not.toContain('cache: npm');
-    expect(buildWorkflow).not.toContain('macos-15-intel');
     expect(buildWorkflow).toContain('create-private-release-provenance.mjs');
-    expect(ciWorkflow).toContain('retention-days: 1');
-    expect(buildWorkflow).toContain('retention-days: 1');
     expect(buildWorkflow).toContain('needs: package');
     expect(buildWorkflow).toContain('actions/download-artifact');
+    expect(buildWorkflow).toContain('name: esse-release-macos-arm64-${{ needs.package.outputs.commit }}');
     expect(buildWorkflow).toContain('verify-private-release-provenance.mjs');
-    expect(buildWorkflow).toContain('node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG');
+    expect(buildWorkflow).toContain('node scripts/create-private-release-metadata.mjs "$RELEASE_TAG"');
     expect(buildWorkflow).toContain('refusing to overwrite it');
-    expect(buildWorkflow).not.toContain('workflow_run:');
-    expect(buildWorkflow).not.toContain('build_run_id');
-    expect(buildWorkflow).not.toContain('publish-private-release.ps1');
-    expect(buildWorkflow).not.toContain('Start-Sleep');
-    expect(buildWorkflow).not.toContain('--clobber');
+    expect(buildWorkflow).not.toMatch(/workflow_run:|build_run_id|--clobber/);
     const metadataScript = await readFile(path.resolve('../..', 'scripts/create-private-release-metadata.mjs'), 'utf8');
     expect(metadataScript).toContain('metadata: "macosArm64"');
-    expect(metadataScript).not.toContain('macosX64');
+    expect(metadataScript).not.toMatch(/macosX64|windowsX64/);
   });
 
   it('hides upstream Provider identity from private error surfaces', () => {
