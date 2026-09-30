@@ -34,7 +34,10 @@
         "scripts/verify-private-release-pipeline.mjs",
         "scripts/verify-private-release-provenance.mjs",
         "scripts/verify-private-overlay.mjs",
-        "sidecars/agent/README.md"
+        "sidecars/agent/README.md",
+        ".github/release-notes/README.md",
+        "scripts/prepare-private-release-notes.mjs",
+        "scripts/prepare-private-release-notes.test.mjs"
       ]
     },
     {

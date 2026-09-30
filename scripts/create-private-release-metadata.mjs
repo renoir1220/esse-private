@@ -16,7 +16,6 @@ assert.equal(product.releaseVersionPolicy, "independent-sidecar", "Private relea
 assert.equal(expectedTag, `v${packageJson.version}`, "Release tag must match the private Sidecar version");
 
 const targets = [
-  { platform: "windows", arch: "x64", metadata: "windowsX64", extension: "exe" },
   { platform: "macos", arch: "arm64", metadata: "macosArm64", extension: "dmg" }
 ];
 const files = await readdir(releaseRoot);

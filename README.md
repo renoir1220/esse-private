@@ -11,7 +11,7 @@ Esse 在本机保存 Provider 配置、API Key、批次记录和原始图片。�
 ## 两种发行形态
 
 - **Esse Community Codex Plugin**：由公开上游发布，适用于 Codex/ChatGPT 桌面端，支持 Windows x64、macOS arm64 和 macOS x64。
-- **Agent Sidecar**：适用于 WorkBuddy 等支持本地 HTTP MCP 的 Agent；支持 Windows x64 和 Apple Silicon macOS（arm64），带完整 Esse 工作台和后台任务执行能力，不再发布 Intel Mac 安装包。
+- **Agent Sidecar**：适用于 WorkBuddy 等支持本地 HTTP MCP 的 Agent；后续仅发布 Apple Silicon macOS（arm64），带完整 Esse 工作台和后台任务执行能力，不再发布 Intel Mac 安装包。
 
 两个仓库共享开源行为，但发行与版本线独立。通常只安装适合当前 Agent 的一种。
 
@@ -27,7 +27,7 @@ Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/e
 
 ## 安装到 WorkBuddy 等 Agent
 
-从本仓库的私有 Releases 下载与当前平台匹配的 `esse-windows-x64-*.exe` 或 `esse-macos-*-*.dmg`，校验后安装并打开 Esse。在 Esse 的设置页：
+从本仓库的 GitHub Releases 下载指定版本的 `esse-macos-arm64-*.dmg`（Windows 安装包仅保留历史版本），校验后安装并打开 Esse。在 Esse 的设置页：
 
 1. 在首次引导中填写 Esse Key，并等待连接测试通过。
 2. 选择默认模型；高级用户也可以在“高级配置”中编辑预置兔子 Provider、禁用或新增模型，或添加其他兼容 Provider。
@@ -44,7 +44,7 @@ Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/e
 
 ## 代码签名
 
-私有 Agent Sidecar 的正式产物遵循独立的[私有发行签名策略](PRIVATE-CODE-SIGNING.md)；公开 Community 的 SignPath 策略不覆盖专有源码。当前发布者签名凭据未就绪时，CI 会明确验证 Windows 产物未签名、macOS 应用具有结构有效的 ad-hoc 签名，并在 Release 说明中披露两者均不代表发布者身份。某个平台的凭据一旦完整配置，工作流会自动恢复并强制执行 Windows Authenticode 或 macOS Developer ID、公证、Gatekeeper 与票据装订验证；只配置部分凭据会阻断发布。不得把校验哈希或 ad-hoc 签名等同于发布者签名，也不得要求用户关闭系统安全机制。
+后续 Agent Sidecar 仅发布 macOS ARM64，流程见 [PRIVATE-RELEASE.md](PRIVATE-RELEASE.md)。六项 Apple 签名／公证凭据必须齐全或全部缺省；缺省时只校验 ad-hoc 结构签名，不建立发布者身份或 Apple 公证，Gatekeeper 仍可能阻止运行。齐全时强制验证 Developer ID、Gatekeeper 和公证票据，部分配置会阻断发布。Release 说明根据实际校验结果披露签名模式，历史 Windows 制品保持不变。不得要求用户关闭系统安全机制。
 
 ## 仓库结构
 
@@ -67,7 +67,7 @@ npm install
 npm run check
 ```
 
-Agent Sidecar（私有版发布 Windows x64 和 macOS arm64，使用同一份核心代码）：
+Agent Sidecar（下游仅通过 GitHub-hosted macOS ARM64 构建发布；以下命令供源码维护参考，不要求用户本地编译）：
 
 ```bash
 cd sidecars/agent
@@ -78,3 +78,5 @@ npm run make
 ```
 
 公开上游文件继续适用 [`LICENSE`](LICENSE) 中的 MIT License；私有专有改动适用 [`LICENSE-PROPRIETARY`](LICENSE-PROPRIETARY)，不得公开分发。
+
+后续构建与发布仅使用 GitHub 托管 runner，维护约定见 [PRIVATE-RELEASE.md](PRIVATE-RELEASE.md)。仓库公开可见不自动改变现有 MIT／专有代码许可边界。

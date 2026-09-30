@@ -10,6 +10,7 @@ const lightweightExactPaths = new Set([
   ".gitignore",
   ".github/release-notes-prefix.md",
   "PRIVATE-RELEASE.md",
+  "scripts/prepare-private-release-notes.mjs",
   "private-overlay.json",
   "scripts/create-private-release-metadata.mjs",
   "scripts/create-private-release-provenance.mjs",

@@ -2,14 +2,14 @@
 
 **Language: [简体中文](README.md) | English**
 
-Esse is the private local image workspace for WorkBuddy and similar Agents; users only need to say “use Esse to generate images.” The public Codex Plugin is released separately upstream as `Esse Community`, while the private Agent Sidecar is displayed as `Esse`.
+Esse is the local image workspace for WorkBuddy and similar Agents; users only need to say “use Esse to generate images.” The public Codex Plugin is released separately upstream as `Esse Community`, while the private Agent Sidecar is displayed as `Esse`.
 
 Provider settings, API keys, batch records, and original images stay on the local computer. Selected references leave the computer only for an actual generation or edit request to the configured Provider or the current Agent image capability. No API key is bundled, and no hosted Esse backend is required.
 
 ## Two distributions
 
 - **Esse Community Codex Plugin**, released from the public upstream for the Codex/ChatGPT desktop app on Windows x64, macOS arm64, and macOS x64.
-- **Agent Sidecar** for WorkBuddy and other Agents that support a local HTTP MCP. It supports Windows x64 and Apple Silicon macOS (arm64) with the complete Esse workspace and background task execution. Intel Mac installers are no longer published.
+- **Agent Sidecar** for WorkBuddy and other Agents that support a local HTTP MCP. New releases support only Apple Silicon macOS (arm64) with the complete Esse workspace and background task execution. Intel Mac installers are no longer published.
 
 The repositories share open-source behavior but have independent distributions and version lines. Most users install only the form that matches their Agent.
 
@@ -25,7 +25,7 @@ You can also download the matching Plugin ZIP from [GitHub Releases](https://git
 
 ## Install for WorkBuddy and other Agents
 
-Download the matching `esse-agent-sidecar-windows-x64-*.exe` or `esse-agent-sidecar-macos-*-*.dmg` from [GitHub Releases](https://github.com/renoir1220/esse/releases), verify it against `sidecar-latest.json` or `checksums.txt`, and open Esse after installation. In Esse settings:
+Download the requested `esse-macos-arm64-*.dmg` from [downstream GitHub Releases](https://github.com/renoir1220/esse-private/releases), verify it against `sidecar-latest.json` or `checksums.txt`, and open Esse after installation. In Esse settings:
 
 1. Enter an Esse Key in the first-run guide and wait for the connection test to pass.
 2. Select a default model; advanced users can edit the preconfigured Tuzi Provider, disable or add models, or add another compatible Provider under Advanced settings.
@@ -42,7 +42,7 @@ The directories are intentionally isolated, and the Sidecar installer never owns
 
 ## Code signing
 
-Formal private Agent Sidecar artifacts follow the separate [private release signing policy](PRIVATE-CODE-SIGNING.md); the public Community SignPath policy does not cover proprietary source. While publisher credentials are unavailable, CI explicitly verifies unsigned Windows artifacts and structurally valid ad-hoc macOS app signatures, and the GitHub Release discloses that neither establishes publisher identity. Once a platform's complete credential set is configured, the workflow automatically restores and enforces Windows Authenticode or macOS Developer ID, notarization, Gatekeeper, and stapled-ticket verification; a partial credential set blocks the release. A verified checksum or ad-hoc signature is not a publisher signature, and users must never be asked to disable platform security.
+New Agent Sidecar releases follow [PRIVATE-RELEASE.md](PRIVATE-RELEASE.md). The six macOS signing and notarization secrets must be all present or all absent. Without them, only ad-hoc structural signing is verified; Developer ID identity and Apple notarization are not established. With a complete set, the workflow requires Developer ID, Gatekeeper and stapled-ticket verification. The release notes disclose the actual mode. Historical Windows artifacts are unchanged. Never disable platform security.
 
 ## Repository layout
 
@@ -65,7 +65,7 @@ npm install
 npm run check
 ```
 
-Agent Sidecar (one shared core released for Windows x64 and macOS arm64):
+Agent Sidecar (source-maintenance commands; release builds run on GitHub-hosted macOS ARM64):
 
 ```bash
 cd sidecars/agent
@@ -75,4 +75,8 @@ npm test
 npm run make
 ```
 
-Licensed under MIT; see [`LICENSE`](LICENSE).
+Upstream files retain MIT licensing; downstream proprietary overlays remain covered by [`LICENSE-PROPRIETARY`](LICENSE-PROPRIETARY). Public visibility does not change that boundary.
+
+## Downstream release platform
+
+New Esse downstream releases are macOS ARM64 only, built on standard GitHub-hosted runners. Windows installers are historical; Intel Mac is unsupported. Use the exact requested Release tag and its DMG plus `sidecar-latest.json`. The Sidecar has no automatic updater. The separately released Community Plugin and its supported platforms are unchanged. See [PRIVATE-RELEASE.md](PRIVATE-RELEASE.md). Public visibility does not relicense proprietary overlays.

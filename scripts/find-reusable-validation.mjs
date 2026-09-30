@@ -2,7 +2,7 @@ import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const artifactPrefix = "esse-private-validation-";
+const artifactPrefix = "esse-macos-validation-v2-";
 
 export function selectReusableArtifact(artifacts, runsById, repository) {
   for (const artifact of artifacts) {
