@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +17,160 @@ afterEach(async () => {
 });
 
 describe('Esse batch manager', () => {
+  it('upgrades legacy keep-source merge replays without cloning again', async () => {
+    const fixture = await fixtureDirectory();
+    const api = fakeApi();
+    const manager = managerFor(fixture, api);
+    await manager.initialize();
+    const target = await manager.create({ prompt: 'target', requestKey: 'legacy-target' });
+    const sourceInput = { prompt: 'source', requestKey: 'legacy-source' };
+    const source = await manager.create(sourceInput);
+    await manager.waitForIdle();
+    const records = await fixture.batchStore.loadAll();
+    const sourceRecord = records.find((batch) => batch.id === source.id)!;
+    const input = { targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: 'legacy-merge', deleteSourceBatches: false };
+    await manager.merge(input);
+    const moved = (await fixture.batchStore.loadAll())[0];
+    delete moved.mergeFingerprints;
+    delete moved.createAliases;
+    await fixture.batchStore.save(moved);
+    await fixture.batchStore.save(sourceRecord);
+    const restarted = managerFor(fixture, api);
+    await restarted.initialize();
+    expect(restarted.list()).toHaveLength(2);
+    expect((await restarted.merge(input)).jobs).toHaveLength(2);
+    expect(restarted.list()).toHaveLength(1);
+    expect((await restarted.create(sourceInput)).id).toBe(target.id);
+    expect((await fixture.batchStore.loadAll()).map((batch) => batch.id)).toEqual([target.id]);
+  });
+  it('moves completed jobs, backups, images and history, remaps create keys and supports deletion after restart', async () => {
+    const fixture = await fixtureDirectory();
+    const api = fakeApi();
+    const manager = managerFor(fixture, api);
+    await manager.initialize();
+    const target = await manager.create({ prompt: 'target', requestKey: 'merge-target-create' });
+    const sourceInput = { prompt: 'source', requestKey: 'merge-source-create' };
+    const source = await manager.create(sourceInput);
+    await manager.waitForIdle();
+    const original = manager.get(source.id).jobs[0].outputImageId!;
+    await manager.modify({ batchId: source.id, imageIds: [original], prompt: 'changed source', requestKey: 'merge-source-modify' });
+    await manager.waitForIdle();
+    const before = manager.get(source.id).jobs[0];
+    const folder = await fixture.imageStore.prepareBatchFolder(source.id, source.title, [{ id: before.outputImageId!, name: before.name }]);
+    const merged = await manager.merge({ targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: 'merge-move-key', deleteSourceBatches: false });
+    expect(manager.list()).toHaveLength(1);
+    expect(merged.jobs[1]).toMatchObject({ outputImageId: before.outputImageId, backups: before.backups, callHistory: before.callHistory });
+    await expect(access(folder)).rejects.toThrow();
+    expect((await manager.create(sourceInput)).id).toBe(target.id);
+    const restarted = managerFor(fixture, api);
+    await restarted.initialize();
+    expect(restarted.list()).toHaveLength(1);
+    expect((await restarted.create(sourceInput)).id).toBe(target.id);
+    expect((await restarted.merge({ targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: 'merge-move-key', deleteSourceBatches: true })).jobs).toHaveLength(2);
+    await restarted.deleteImages(target.id, [before.backups[0].imageId]);
+    expect(await fixture.imageStore.get(before.backups[0].imageId)).toBeUndefined();
+    expect(await fixture.imageStore.get(before.outputImageId!)).toBeDefined();
+  });
+
+  it.each(['commit', 'cleanup', 'receipt'])('recovers a merge when %s persistence fails', async (stage) => {
+    const fixture = await fixtureDirectory();
+    const api = fakeApi();
+    const manager = managerFor(fixture, api);
+    await manager.initialize();
+    const target = await manager.create({ prompt: 'target', requestKey: `target-${stage}-create` });
+    const sourceInput = { prompt: 'source', requestKey: `source-${stage}-create` };
+    const source = await manager.create(sourceInput);
+    await manager.waitForIdle();
+    const save = fixture.batchStore.save.bind(fixture.batchStore);
+    let failed = false;
+    const saveSpy = vi.spyOn(fixture.batchStore, 'save').mockImplementation(async (batch) => {
+      const matches = stage === 'commit' ? Boolean(batch.mergeCleanup?.length) : stage === 'receipt' && batch.id === target.id && batch.jobs.length === 2 && !batch.mergeCleanup;
+      if (!failed && matches) { failed = true; throw new Error(`injected ${stage} merge failure`); }
+      await save(batch);
+    });
+    const deleteSpy = vi.spyOn(fixture.batchStore, 'delete').mockImplementationOnce(async () => { if (stage === 'cleanup') { failed = true; throw new Error('injected cleanup merge failure'); } });
+    const input = { targetBatchId: target.id, sourceBatchIds: [source.id], requestKey: `merge-${stage}-key` };
+    await expect(manager.merge(input)).rejects.toThrow(/injected/);
+    expect(manager.list()).toHaveLength(stage === 'commit' ? 2 : 1);
+    if (stage === 'commit') expect(manager.get(target.id).jobs).toHaveLength(1);
+    saveSpy.mockRestore();
+    deleteSpy.mockRestore();
+    const restarted = managerFor(fixture, api);
+    await restarted.initialize();
+    const merged = await restarted.merge(input);
+    expect(merged.jobs).toHaveLength(2);
+    expect(restarted.list()).toHaveLength(1);
+    expect((await fixture.batchStore.loadAll()).map((batch) => batch.id)).toEqual([target.id]);
+    expect((await restarted.create(sourceInput)).id).toBe(target.id);
+  });
+
+  it('deduplicates concurrent create and append before offering resolution and rejects conflicting keys', async () => {
+    const fixture = await fixtureDirectory();
+    const api = fakeApi();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const originalOfferings = api.offerings;
+    const offerings = vi.spyOn(api, 'offerings').mockImplementation(async () => { await gate; return originalOfferings(); });
+    const manager = managerFor(fixture, api, { canRun: async () => false });
+    await manager.initialize();
+    const input = { prompt: 'one durable batch', requestKey: 'concurrent-create-key' };
+    const pending = [manager.create(input), manager.create({ ...input })];
+    await expect(manager.create({ ...input, prompt: 'different' })).rejects.toThrow(/different arguments/);
+    release();
+    const [first, second] = await Promise.all(pending);
+    expect(first.id).toBe(second.id);
+    expect(offerings).toHaveBeenCalledTimes(1);
+    expect(manager.list()).toHaveLength(1);
+    const append = { batchId: first.id, requestKey: 'concurrent-append-key', jobs: [{ prompt: 'one appended job' }] };
+    const appended = await Promise.all([manager.append(append), manager.append({ ...append })]);
+    expect(appended[0].appendedJobIds).toEqual(appended[1].appendedJobIds);
+    expect(manager.get(first.id).jobs).toHaveLength(2);
+    await expect(manager.append({ ...append, jobs: [{ prompt: 'different' }] })).rejects.toThrow(/different arguments/);
+    const restarted = managerFor(fixture, api, { canRun: async () => false });
+    await restarted.initialize();
+    await expect(restarted.create({ ...input, prompt: 'different after restart' })).rejects.toThrow(/different arguments/);
+    await expect(restarted.append({ ...append, jobs: [{ prompt: 'different after restart' }] })).rejects.toThrow(/different arguments/);
+    const generate = vi.spyOn(api, 'generate');
+    const runner = managerFor(fixture, api);
+    await runner.initialize();
+    await runner.waitForIdle();
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(runner.get(first.id).jobs.map((job) => job.status)).toEqual(['succeeded', 'succeeded']);
+  });
+
+  it.each(['start', 'task', 'finish'])('releases running bookkeeping when %s persistence fails', async (stage) => {
+    const fixture = await fixtureDirectory();
+    const api = fakeApi(1);
+    const now = new Date().toISOString();
+    api.generate = vi.fn(async (_input?: unknown, requestKey = 'generated', hooks?: ProviderTaskHooks) => {
+      await hooks?.onTask?.({ id: 'accepted-task', protocol: 'tuzi-video', status: 'in_progress', submittedAt: now, updatedAt: now });
+      return generatedResult(requestKey);
+    });
+    let canRun = false;
+    const manager = managerFor(fixture, api, { canRun: async () => canRun });
+    await manager.initialize();
+    const created = await manager.create({ prompt: 'failure injection', requestKey: `failure-${stage}-key` });
+    const save = fixture.batchStore.save.bind(fixture.batchStore);
+    let injected = false;
+    vi.spyOn(fixture.batchStore, 'save').mockImplementation(async (batch) => {
+      const job = batch.jobs[0];
+      const matches = stage === 'start' ? job.status === 'running' && !job.providerTask
+        : stage === 'task' ? job.status === 'running' && Boolean(job.providerTask) : job.status === 'succeeded';
+      if (!injected && matches) { injected = true; throw new Error(`injected ${stage} save failure`); }
+      await save(batch);
+    });
+    canRun = true;
+    manager.resume();
+    if (stage === 'finish') await expect(manager.waitForIdle()).rejects.toThrow(/injected finish/);
+    else await manager.waitForIdle();
+    expect(injected).toBe(true);
+    expect(manager.get(created.id).jobs[0].status).not.toBe('running');
+    const next = await manager.create({ prompt: 'queue continues', requestKey: `after-${stage}-failure-key` });
+    await manager.waitForIdle();
+    expect(manager.get(next.id).jobs[0].status).toBe('succeeded');
+    if (stage === 'start') expect(api.generate).toHaveBeenCalledTimes(1);
+  });
+
   it('publishes a batch-local change after durable acceptance', async () => {
     const fixture = await fixtureDirectory();
     const changes: BatchManagerChange[] = [];

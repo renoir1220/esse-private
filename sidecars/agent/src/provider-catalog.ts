@@ -24,6 +24,9 @@ export interface TuziProviderPreset {
 
 const gptImageSizes = ['auto', '1024x1024', '1536x1024', '1024x1536', '2048x2048', '2048x1152', '3840x2160', '2160x3840'];
 
+const videoRatioSizes = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+const syncRatioSizes = videoRatioSizes.map((size) => size.replace(':', 'x'));
+
 export const TUZI_PROVIDER_PRESETS: TuziProviderPreset[] = [
   {
     id: 'tuzi-default',
@@ -43,6 +46,11 @@ export const TUZI_PROVIDER_PRESETS: TuziProviderPreset[] = [
       model('nano-banana-2-2k', 'nano-banana-2', 'nano-banana-2-2k', 'Nano Banana 2 · 2K'),
       model('nano-banana-2-4k', 'nano-banana-2', 'nano-banana-2-4k', 'Nano Banana 2 · 4K'),
       model('seedream-4-5', 'seedream-4.5', 'doubao-seedream-4-5-251128', 'Seedream 4.5'),
+      model('gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image-preview', syncRatioSizes, ['1k', '2k', '4k']),
+      model('gemini-3-pro-image-preview', 'gemini-3-pro-image-preview', 'gemini-3-pro-image-preview', 'gemini-3-pro-image-preview', syncRatioSizes),
+      model('gemini-3-pro-image-preview-async', 'gemini-3-pro-image-preview-async', 'gemini-3-pro-image-preview-async', 'gemini-3-pro-image-preview-async', videoRatioSizes),
+      model('gemini-3-pro-image-preview-2k-async', 'gemini-3-pro-image-preview-2k-async', 'gemini-3-pro-image-preview-2k-async', 'gemini-3-pro-image-preview-2k-async', videoRatioSizes),
+      model('gemini-3-pro-image-preview-4k-async', 'gemini-3-pro-image-preview-4k-async', 'gemini-3-pro-image-preview-4k-async', 'gemini-3-pro-image-preview-4k-async', videoRatioSizes),
     ],
   },
   {
@@ -179,7 +187,7 @@ export function blankOffering(): OfferingConfig {
   return { id: '', canonicalModelId: '', providerModelId: '', displayName: '', price: { mode: 'unknown', currency: 'CNY' }, supportsTextToImage: true, supportsImageToImage: true, sizes: [], qualities: [] };
 }
 
-function model(catalogId: string, canonicalModelId: string, providerModelId: string, displayName: string, sizes: string[] = []): TuziModelPreset {
+function model(catalogId: string, canonicalModelId: string, providerModelId: string, displayName: string, sizes: string[] = [], qualities: string[] = []): TuziModelPreset {
   return {
     catalogId,
     id: '',
@@ -189,8 +197,8 @@ function model(catalogId: string, canonicalModelId: string, providerModelId: str
     price: { mode: 'unknown', currency: 'CNY' },
     supportsTextToImage: true,
     supportsImageToImage: true,
-    sizes: [...sizes],
-    qualities: [],
+    sizes: sizes.length ? [...sizes] : /^(nano-banana-2|gemini-3-pro-image-preview)/.test(providerModelId) || providerModelId === 'gemini-3.1-flash-image-preview-4k' ? [...syncRatioSizes] : [],
+    qualities: providerModelId === 'gemini-3.1-flash-image-preview-4k' ? ['4k'] : [...qualities],
   };
 }
 
