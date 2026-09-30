@@ -1,16 +1,16 @@
 # Install Esse
 
-This file is the installation contract for an Agent given only this repository URL. This private repository publishes the Agent Sidecar as **Esse**. The separately released public Codex Plugin is **Esse Community**.
+This file is the installation contract for an Agent given only this repository URL. This publicly visible downstream repository publishes the Agent Sidecar as **Esse**. The separately released public Codex Plugin is **Esse Community**.
 
 ## Required outcome
 
-For Codex/ChatGPT, install the Plugin from the public Esse Community GitHub Release into the current user's profile, register the `esse-local` marketplace, install and enable `esse`, verify the result, then guide the user through restart and UI-only default model setup. For WorkBuddy or another local HTTP MCP Agent, install the private Agent Sidecar from this repository's Release.
+For Codex/ChatGPT, install the Plugin from the public Esse Community GitHub Release into the current user's profile, register the `esse-local` marketplace, install and enable `esse`, verify the result, then guide the user through restart and UI-only default model setup. For WorkBuddy or another local HTTP MCP Agent, install the downstream Agent Sidecar from this repository's Release.
 
 Do not ask the user to download an archive manually. Do not ask for a Provider API key in chat. Never disable or bypass Gatekeeper.
 
 ## Agent procedure
 
-1. For the Codex Plugin, confirm the host is Windows x64, macOS arm64, or macOS x64. For the private Agent Sidecar, confirm the host is Windows x64 or macOS arm64; Intel Macs are unsupported. Stop with a clear unsupported-platform message otherwise.
+1. For the Codex Plugin, confirm the host is Windows x64, macOS arm64, or macOS x64. For new downstream Agent Sidecar releases, confirm the host is macOS arm64; Windows builds are historical and Intel Macs are unsupported. Stop with a clear unsupported-platform message otherwise.
 2. Read the installer before executing it. The installer may request network access to `github.com` and write access only to the user's Esse application-data directory and Codex plugin configuration.
 3. Run the repository installer. It downloads `latest.json` and the matching versioned archive from the latest GitHub Release, verifies SHA256, and performs an idempotent user-scoped installation.
 4. Treat an `ESSE_INSTALL_RESULT` line with `status: "installed"` as the structured success marker. The installer performs plugin registration and verification with its selected Codex executable; do not repeat those commands through a bare `codex` from `PATH`.
@@ -66,16 +66,17 @@ Explicitly remind the user that the API Key belongs only in the Esse Community s
 
 ## Agent Sidecar procedure
 
-Download these two assets from the same requested GitHub Release:
+New releases support Apple Silicon macOS only. Select the exact requested release tag, especially for beta versions: GitHub latest stable excludes prereleases. Download these two assets from that same GitHub Release:
 
 - `sidecar-latest.json`
 - the platform and architecture asset named by that metadata file:
-  - Windows x64: `windowsX64Asset`
   - macOS arm64: `macosArm64Asset`
 
 Verify the asset SHA256 against the matching `*Sha256` field before opening it. The installed application and window are named Esse.
 
-### Windows x64
+### Historical Windows x64 releases
+
+New releases do not include Windows installers or Windows metadata fields. Only an explicitly requested older Release with `windowsX64Asset` and `windowsX64Sha256` can be installed on Windows.
 
 Run the checksum-verified `.exe` installer. The release notes disclose whether the application and installer are Authenticode-signed. When the release is unsigned, report that Windows may show an unknown-publisher or SmartScreen warning and do not claim publisher verification. If Windows blocks the installer, stop and report the exact error; never disable Windows security controls.
 
@@ -93,5 +94,7 @@ After installation, the user opens Esse and completes setup inside its settings 
 Never request the API Key in chat or put it in an Agent configuration file. The MCP configuration contains only a local loopback endpoint and per-install pairing token. Once Esse accepts Provider work in the background, the Agent should return control immediately and should not poll or copy output back unless the user explicitly asks.
 
 ## Update behavior
+
+The Sidecar has no automatic updater in the current source. Update it by installing the checksum-verified DMG from the requested Release. The following versioned-runtime and rollback behavior belongs to the separately released Community Plugin.
 
 Running the same installation request again installs the latest release. Versions are stored separately under the user-scoped Esse plugin directory, and the fixed local marketplace is switched only after the new runtime passes its self-test. If plugin registration fails, the installer restores the previous marketplace selection. macOS runtime or desktop-app trust failures happen before the marketplace is changed.

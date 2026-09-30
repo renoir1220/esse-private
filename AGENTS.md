@@ -4,7 +4,7 @@ When a user asks Codex to install Esse from this private downstream repository o
 
 1. Read `INSTALL.md` completely before running commands.
 2. For the Codex Plugin, use the repository installer and the requested GitHub Release. For the Agent Sidecar, use its published platform installer. Do not build from source unless the release path is unavailable and the user explicitly agrees to a developer installation.
-3. Detect the user's operating system and architecture. The Codex Plugin supports Windows x64, macOS arm64, and macOS x64. The private Agent Sidecar supports Windows x64 and macOS arm64 only; Intel Macs are unsupported.
+3. Detect the user's operating system and architecture. The Codex Plugin supports Windows x64, macOS arm64, and macOS x64. New downstream Agent Sidecar releases support macOS arm64 only; Windows installers are historical and Intel Macs are unsupported.
 4. Download scripts or artifacts to a temporary directory, verify the release SHA256 recorded in `latest.json` for the Plugin or `sidecar-latest.json` for the Agent Sidecar, and install only into the documented user-scoped Esse directory.
 5. On macOS, let `install.sh` select the Gatekeeper-approved desktop app and its managed Node runtime. Never run a bare `codex` or `node` from `PATH`, remove quarantine attributes, or tell the user to bypass Gatekeeper.
 6. Treat the installer's `ESSE_INSTALL_RESULT` as the registration result. Do not repeat its plugin-list commands through another Codex CLI; inspect the receipt and marketplace catalog statically if an additional check is needed.
@@ -46,13 +46,13 @@ The public MIT edition is called **Esse Community**. A private downstream may se
 
 ## GitHub release validation
 
-Every time a new Esse version is published on GitHub, update the maintainer's local installation through the same user-facing flow documented in `INSTALL.md`:
+Every time a new Esse version is published on GitHub, verify installation on an authorized Apple Silicon Mac through the user-facing flow documented in `INSTALL.md`. The maintainer's Windows workstation cannot accept a new Mac-only release:
 
 1. Use the repository installer and the newly published GitHub Release; do not substitute a source build or developer cache install.
 2. Inspect the installer from a fresh temporary checkout before running it.
 3. Require a successful `ESSE_INSTALL_RESULT` and verify that the installed receipt version matches the new release.
 4. Treat this installation as part of the release smoke test. A release is not fully handed off until the user-path installation succeeds or the exact blocker is reported.
-5. Publisher signing is optional until the maintainer restores credentials. A platform must either receive its complete signing/notarization secret set or no signing secrets at all; partial configuration is a release error. Unsigned Windows artifacts must be verified as unsigned. macOS app bundles without Developer ID credentials must be fully ad-hoc signed after packaging and pass strict structural signature verification. Disclose accurately that neither mode establishes publisher identity or Apple notarization.
+5. New downstream releases build only macOS ARM64 on GitHub-hosted runners; do not build locally or restore self-hosted routing. Publisher signing is optional until the maintainer restores credentials. A platform must either receive its complete signing/notarization secret set or no signing secrets at all; partial configuration is a release error. Unsigned Windows artifacts must be verified as unsigned. macOS app bundles without Developer ID credentials must be fully ad-hoc signed after packaging and pass strict structural signature verification. Disclose accurately that neither mode establishes publisher identity or Apple notarization.
 
 ## GitHub release notes
 

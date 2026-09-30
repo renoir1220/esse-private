@@ -70,17 +70,11 @@ test("rejects expired, push, and foreign-repository artifacts", () => {
   );
 });
 
-test("records every successful PR tier and skips duplicate main validation", async () => {
-  const workflow = await readFile(
-    path.join(repositoryRoot, ".github", "workflows", "ci.yml"),
-    "utf8"
-  );
-  assert.equal(
-    [...workflow.matchAll(/if: needs\.classify\.outputs\.reused_run_id == ''/g)].length,
-    2
-  );
+test("records only complete macOS PR validation in the new receipt namespace", async () => {
+  const workflow = await readFile(path.join(repositoryRoot, ".github", "workflows", "ci.yml"), "utf8");
   assert.match(workflow, /name: Record exact-tree PR validation/);
   assert.match(workflow, /github\.event_name == 'pull_request'/);
-  assert.match(workflow, /tier = if \(\$fullValidation\) \{ 'full' \} else \{ 'fast' \}/);
-  assert.match(workflow, /name: esse-private-validation-\$\{\{ steps\.receipt\.outputs\.tree \}\}/);
+  assert.match(workflow, /esse-macos-validation-v2-/);
+  assert.match(workflow, /tier:"full"/);
+  assert.doesNotMatch(workflow, /self-hosted|windows-latest/);
 });

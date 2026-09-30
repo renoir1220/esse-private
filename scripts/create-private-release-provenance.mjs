@@ -17,7 +17,6 @@ const product = JSON.parse(
 );
 
 const targets = new Map([
-  ["windows-x64", { extension: "exe" }],
   ["macos-arm64", { extension: "dmg" }]
 ]);
 const targetKey = `${platform}-${arch}`;

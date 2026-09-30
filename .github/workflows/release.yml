@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag matching the private Sidecar version
+        description: Existing tag matching the Esse Sidecar version
         required: true
         type: string
 
@@ -22,17 +22,11 @@ permissions:
 
 jobs:
   package:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: windows
-            arch: x64
-            runner: '["self-hosted","esse-private-windows-x64"]'
-          - platform: macos
-            arch: arm64
-            runner: '["self-hosted","esse-private-macos-arm64"]'
-    runs-on: ${{ fromJSON(matrix.runner) }}
+    runs-on: macos-15
+    timeout-minutes: 40
+    outputs:
+      signing: ${{ steps.macos-signing.outputs.enabled }}
+      commit: ${{ steps.identity.outputs.commit }}
     defaults:
       run:
         working-directory: sidecars/agent
@@ -45,83 +39,24 @@ jobs:
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
-      - run: npm ci
-      - name: Verify independent Esse tag on Windows
-        if: matrix.platform == 'windows'
-        id: identity-windows
-        shell: pwsh
+          cache: npm
+          cache-dependency-path: sidecars/agent/package-lock.json
+      - name: Verify tag, ancestry, architecture and version-specific notes
+        id: identity
         run: |
-          $packageVersion = node -p "require('./package.json').version"
-          if ($env:RELEASE_TAG -ne "v$packageVersion") {
-            throw "Release tag $env:RELEASE_TAG does not match package version $packageVersion."
-          }
-          $tagCommit = git rev-list -n 1 $env:RELEASE_TAG
-          if ([string]::IsNullOrWhiteSpace($tagCommit)) {
-            throw "Release tag $env:RELEASE_TAG does not resolve to a commit."
-          }
-          git merge-base --is-ancestor $tagCommit origin/main
-          if ($LASTEXITCODE -ne 0) {
-            throw "Release tag $env:RELEASE_TAG is not an ancestor of origin/main."
-          }
-          "commit=$tagCommit" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-      - name: Verify independent Esse tag on macOS
-        if: matrix.platform == 'macos'
-        id: identity-macos
-        shell: bash
-        run: |
-          package_version="$(node -e "process.stdout.write(require('./package.json').version)")"
+          test "$(uname -m)" = arm64
+          package_version="$(node -p "require('./package.json').version")"
           test "$RELEASE_TAG" = "v$package_version"
           tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
           git merge-base --is-ancestor "$tag_commit" origin/main
           echo "commit=$tag_commit" >> "$GITHUB_OUTPUT"
-      - name: Export release commit
-        id: identity
-        shell: node {0}
-        env:
-          WINDOWS_COMMIT: ${{ steps.identity-windows.outputs.commit }}
-          MACOS_COMMIT: ${{ steps.identity-macos.outputs.commit }}
-        run: |
-          const fs = require('node:fs');
-          const commit = process.env.WINDOWS_COMMIT || process.env.MACOS_COMMIT;
-          if (!commit) throw new Error('Release tag did not resolve to a commit.');
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, `commit=${commit}\n`);
+          node ../../scripts/prepare-private-release-notes.mjs "$RELEASE_TAG" --check
+      - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
       - run: npm run e2e:thumbnails
-      - name: Resolve Windows signing mode
-        if: matrix.platform == 'windows'
-        id: windows-signing
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $required = @(
-            $env:WINDOWS_CERTIFICATE_PFX_BASE64,
-            $env:WINDOWS_CERTIFICATE_PASSWORD
-          )
-          $configuredCount = @($required | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }).Count
-          if ($configuredCount -eq 0) {
-            "enabled=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-            Write-Warning 'Windows signing credentials are not configured. This release will contain unsigned Windows artifacts.'
-          } elseif ($configuredCount -ne $required.Count) {
-            throw 'Windows signing secrets must be configured together or all omitted.'
-          } else {
-            "enabled=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          }
-      - name: Configure Windows Authenticode signing
-        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'true'
-        shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $certificate = Join-Path $env:RUNNER_TEMP 'esse-authenticode.pfx'
-          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
-          "WINDOWS_CERTIFICATE_FILE=$certificate" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          "WINDOWS_CERTIFICATE_PASSWORD=$env:WINDOWS_CERTIFICATE_PASSWORD" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Resolve macOS signing mode
-        if: matrix.platform == 'macos'
         id: macos-signing
         shell: bash
         env:
@@ -154,7 +89,7 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           fi
       - name: Configure Developer ID signing and notarization
-        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'true'
+        if: steps.macos-signing.outputs.enabled == 'true'
         shell: bash
         env:
           MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
@@ -180,64 +115,39 @@ jobs:
           echo "MACOS_NOTARY_API_KEY_ID=$MACOS_NOTARY_API_KEY_ID" >> "$GITHUB_ENV"
           echo "MACOS_NOTARY_API_ISSUER_ID=$MACOS_NOTARY_API_ISSUER_ID" >> "$GITHUB_ENV"
           echo "MACOS_SIGN_IDENTITY=$MACOS_SIGN_IDENTITY" >> "$GITHUB_ENV"
-      - name: Build Windows
-        if: matrix.platform == 'windows'
-        run: npm run make
-      - name: Verify Windows
-        if: matrix.platform == 'windows'
-        run: npm run verify:package:windows
-      - name: Verify Windows Authenticode signatures
-        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'true'
-        run: npm run verify:signatures
-      - name: Verify unsigned Windows artifacts
-        if: matrix.platform == 'windows' && steps.windows-signing.outputs.enabled == 'false'
-        shell: pwsh
-        run: |
-          Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
-          $product = Get-Content -Raw -Encoding UTF8 'product.json' | ConvertFrom-Json
-          $targets = @(
-            (Join-Path (Get-Location) ("out\{0}-win32-x64\{1}.exe" -f $product.displayName, $product.executableName)),
-            (Join-Path (Get-Location) ("out\make\squirrel.windows\x64\{0}" -f $product.windowsSetupExe))
-          )
-          foreach ($target in $targets) {
-            if (-not (Test-Path -LiteralPath $target)) { throw "Missing Windows release artifact: $target" }
-            $status = (Get-AuthenticodeSignature -LiteralPath $target).Status
-            if ($status -ne 'NotSigned') { throw "Expected unsigned Windows artifact but found signature status ${status}: $target" }
-            Write-Output "$target is intentionally unsigned."
-          }
-      - name: Build macOS
-        if: matrix.platform == 'macos'
-        run: npm run make:macos:${{ matrix.arch }}
-      - name: Verify signed and notarized macOS package
-        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'true'
-        shell: bash
-        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }} --require-signed
-      - name: Verify ad-hoc signed macOS package
-        if: matrix.platform == 'macos' && steps.macos-signing.outputs.enabled == 'false'
-        shell: bash
-        run: bash scripts/verify-macos-bundle.sh ${{ matrix.arch }}
-      - run: npm run stage:release -- ${{ matrix.platform }} ${{ matrix.arch }}
+      - name: Build macOS ARM64
+        run: npm run make:macos:arm64
+      - name: Verify Developer ID signature and notarization
+        if: steps.macos-signing.outputs.enabled == 'true'
+        run: bash scripts/verify-macos-bundle.sh arm64 --require-signed
+      - name: Verify ad-hoc signature and packaged app
+        if: steps.macos-signing.outputs.enabled == 'false'
+        run: bash scripts/verify-macos-bundle.sh arm64
+      - run: npm run stage:release -- macos arm64
       - name: Bind staged asset to tag and commit
         working-directory: ${{ github.workspace }}
-        run: >-
-          node scripts/create-private-release-provenance.mjs
-          ${{ env.RELEASE_TAG }}
-          ${{ steps.identity.outputs.commit }}
-          ${{ matrix.platform }}
-          ${{ matrix.arch }}
+        env:
+          RELEASE_COMMIT: ${{ steps.identity.outputs.commit }}
+        run: node scripts/create-private-release-provenance.mjs "$RELEASE_TAG" "$RELEASE_COMMIT" macos arm64
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: esse-release-${{ matrix.platform }}-${{ matrix.arch }}-${{ steps.identity.outputs.commit }}
+          name: esse-release-macos-arm64-${{ steps.identity.outputs.commit }}
           path: |
-            release/esse-${{ matrix.platform }}-${{ matrix.arch }}-v*
-            release/provenance-${{ matrix.platform }}-${{ matrix.arch }}.json
+            release/esse-macos-arm64-v*.dmg
+            release/provenance-macos-arm64.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/esse-signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/esse-developer-id.p12" "$RUNNER_TEMP"/AuthKey_*.p8
 
   publish:
     needs: package
-    runs-on: [self-hosted, esse-private-windows-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: write
@@ -252,55 +162,30 @@ jobs:
           node-version: 22
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: esse-release-*
+          name: esse-release-macos-arm64-${{ needs.package.outputs.commit }}
           path: release
-          merge-multiple: true
       - name: Verify immutable build provenance
-        shell: pwsh
+        env:
+          RELEASE_COMMIT: ${{ needs.package.outputs.commit }}
         run: |
-          $tagCommit = git rev-list -n 1 $env:RELEASE_TAG
-          node scripts/verify-private-release-provenance.mjs $env:RELEASE_TAG $tagCommit
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$RELEASE_COMMIT"
+          node scripts/verify-private-release-provenance.mjs "$RELEASE_TAG" "$RELEASE_COMMIT"
       - name: Create checksums and Sidecar metadata
-        shell: pwsh
-        run: node scripts/create-private-release-metadata.mjs $env:RELEASE_TAG
+        run: node scripts/create-private-release-metadata.mjs "$RELEASE_TAG"
+      - name: Prepare bilingual version-specific notes
+        env:
+          SIGNED: ${{ needs.package.outputs.signing }}
+        run: node scripts/prepare-private-release-notes.mjs "$RELEASE_TAG" "$SIGNED"
       - name: Publish GitHub Release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = $env:RELEASE_TAG
-          $metadata = Get-Content -Raw -Encoding UTF8 .\release\sidecar-latest.json | ConvertFrom-Json
-          $assetNames = @(
-            [string]$metadata.windowsX64Asset,
-            [string]$metadata.macosArm64Asset,
-            'sidecar-latest.json',
-            'checksums.txt'
-          )
-          $assets = foreach ($name in $assetNames) {
-            $candidate = Join-Path .\release $name
-            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-              throw "Missing release asset: $candidate"
-            }
-            (Resolve-Path -LiteralPath $candidate).Path
-          }
-          $viewOutput = (& gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" 2>&1 | Out-String)
-          $viewExit = $LASTEXITCODE
-          if ($viewExit -eq 0) {
-            throw "GitHub Release $tag already exists; refusing to overwrite it."
-          }
-          if ($viewOutput -notmatch 'HTTP 404|Not Found') {
-            throw "Unable to verify whether GitHub Release $tag exists: $($viewOutput.Trim())"
-          }
-          $arguments = @(
-            'release', 'create', $tag
-          ) + $assets + @(
-            '--repo', $env:GITHUB_REPOSITORY,
-            '--verify-tag',
-            '--title', "Esse $tag",
-            '--notes-file', (Resolve-Path -LiteralPath .\.github\release-notes-prefix.md).Path
-          )
-          if ($tag -match '-') { $arguments += '--prerelease' }
-          $publishOutput = (& gh @arguments 2>&1 | Out-String)
-          if ($LASTEXITCODE -ne 0) {
-            throw "GitHub Release publish failed: $($publishOutput.Trim())"
-          }
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > "$RUNNER_TEMP/release-check.json" 2> "$RUNNER_TEMP/release-check.err"; then
+            echo 'Release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+          grep -q 'HTTP 404' "$RUNNER_TEMP/release-check.err" || { cat "$RUNNER_TEMP/release-check.err" >&2; exit 1; }
+          asset="$(node -p "require('./release/sidecar-latest.json').macosArm64Asset")"
+          args=(release create "$RELEASE_TAG" "release/$asset" release/sidecar-latest.json release/checksums.txt --repo "$GITHUB_REPOSITORY" --verify-tag --title "Esse $RELEASE_TAG" --notes-file release/release-notes.md)
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh "${args[@]}"

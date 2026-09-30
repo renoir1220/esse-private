@@ -20,7 +20,6 @@ assert.equal(expectedTag, `v${packageJson.version}`, "Release tag must match the
 assert.match(expectedCommit ?? "", /^[0-9a-f]{40}$/, "Expected commit must be a full Git SHA");
 
 const targets = [
-  { platform: "windows", arch: "x64", extension: "exe" },
   { platform: "macos", arch: "arm64", extension: "dmg" }
 ];
 const expectedFiles = new Set();
