@@ -50,7 +50,7 @@ Every time a new Esse version is published on GitHub, verify installation on an 
 
 1. Use the repository installer and the newly published GitHub Release; do not substitute a source build or developer cache install.
 2. Inspect the installer from a fresh temporary checkout before running it.
-3. Require a successful `ESSE_INSTALL_RESULT` and verify that the installed receipt version matches the new release.
+3. For the Community Plugin, require a successful `ESSE_INSTALL_RESULT` and matching receipt version. For the private Sidecar, follow `INSTALL.md`'s checksum-verified DMG flow and record the installed app version, normal launch, setup and Agent connection; the Plugin registration marker does not validate a Sidecar installation.
 4. Treat this installation as part of the release smoke test. A release is not fully handed off until the user-path installation succeeds or the exact blocker is reported.
 5. New downstream releases build only macOS ARM64 on GitHub-hosted runners; do not build locally or restore self-hosted routing. Publisher signing is optional until the maintainer restores credentials. A platform must either receive its complete signing/notarization secret set or no signing secrets at all; partial configuration is a release error. Unsigned Windows artifacts must be verified as unsigned. macOS app bundles without Developer ID credentials must be fully ad-hoc signed after packaging and pass strict structural signature verification. Disclose accurately that neither mode establishes publisher identity or Apple notarization.
 
@@ -64,3 +64,11 @@ Write every GitHub Release note as a version-specific, bilingual changelog:
 4. Derive the content from the previous-tag comparison and merged pull requests. Do not claim changes that cannot be verified from the release diff.
 5. Omit release-preparation noise such as version bumps, packaging-only commits, and duplicated auto-generated changelogs unless they materially affect users.
 6. End each language section with the matching full-changelog comparison link. Include pull request links only when they add useful detail.
+
+## Completion and evidence
+
+- Mark release work complete only when the new version is published, CI validates its released commit, and release assets pass validation. Keep required physical installation status explicit.
+- Complete live image acceptance only after retrieving the actual image file and checking its pixels, dimensions and requested parameters. HTTP 200 confirms request acceptance, not image validation.
+- At every checkpoint, list unfinished acceptance items and concrete next actions. Continue all feasible work; waiting remains pending. Record genuine approval or platform blocks with evidence and never bypass them.
+- Reuse the user's bounded authorization for routine steps. Before requesting new authorization, check foreseeable dependencies so the request covers concrete remaining work.
+- Persist source changes promptly in an authorized repository; a temporary snapshot alone is insufficient. Record actual, estimated and reserved costs separately, and do not retry an uncertain POST.
