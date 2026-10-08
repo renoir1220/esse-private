@@ -50,7 +50,7 @@ Every time a new Esse version is published on GitHub, verify installation on an 
 
 1. Use the repository installer and the newly published GitHub Release; do not substitute a source build or developer cache install.
 2. Inspect the installer from a fresh temporary checkout before running it.
-3. Require a successful `ESSE_INSTALL_RESULT` and verify that the installed receipt version matches the new release.
+3. For the Community Plugin, require a successful `ESSE_INSTALL_RESULT` and matching receipt version. For the private Sidecar, follow `INSTALL.md`'s checksum-verified DMG flow and record the installed app version, normal launch, setup and Agent connection; the Plugin registration marker does not validate a Sidecar installation.
 4. Treat this installation as part of the release smoke test. A release is not fully handed off until the user-path installation succeeds or the exact blocker is reported.
 5. New downstream releases build only macOS ARM64 on GitHub-hosted runners; do not build locally or restore self-hosted routing. Publisher signing is optional until the maintainer restores credentials. A platform must either receive its complete signing/notarization secret set or no signing secrets at all; partial configuration is a release error. Unsigned Windows artifacts must be verified as unsigned. macOS app bundles without Developer ID credentials must be fully ad-hoc signed after packaging and pass strict structural signature verification. Disclose accurately that neither mode establishes publisher identity or Apple notarization.
 
