@@ -123,6 +123,7 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
+          npm run e2e:provider-redirects
           npm run e2e:thumbnails
       - name: Package and smoke-test macOS ARM64
         working-directory: sidecars/agent
