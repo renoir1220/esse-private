@@ -4,7 +4,7 @@ This private Esse downstream starts at version `1.0.0` and does not inherit the 
 
 This directory contains the Agent Sidecar distribution of Esse. “Agent Sidecar” is a technical packaging term; the installed application, window, MCP server, skills, and user-facing documentation all call the product **Esse**.
 
-It runs a local Electron workspace and authenticated loopback HTTP MCP for WorkBuddy and other compatible Agents. It has no hosted Esse backend. The ordinary setup path accepts only an Esse Key; the preconfigured Tuzi connection and any custom Provider profiles are editable together under Advanced settings, and every key is protected by the operating system.
+It runs a local Electron workspace and authenticated loopback HTTP MCP for WorkBuddy and other compatible Agents. It has no hosted Esse backend. The managed-service setup path accepts an Esse Key. To use your own Google API key, open Advanced settings → Provider → Add → Google Gemini · Official and save the key; no Esse Key is required. The preconfigured Tuzi connection and custom Provider profiles remain editable together under Advanced settings, and every key is protected by the operating system.
 
 ## Shared implementation
 

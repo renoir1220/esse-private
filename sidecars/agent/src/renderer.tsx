@@ -38,6 +38,7 @@ import { initialImageZoom, zoomImageAtPoint } from './image-zoom';
 import { shouldShowOnboarding } from './onboarding-state';
 import { shouldDismissOverlay } from './overlay-dismiss';
 import { PENDING_TASK_HOVER_DELAY_MS, pendingTaskPeekPosition, type PeekPosition } from './pending-task-peek';
+import { GEMINI_PROVIDER_PRESET, createGeminiProviderDraft, geminiProviderPresetForDraft } from './gemini-catalog';
 import { blankOffering, createCustomProviderDraft, createSubrouterProviderDraft, createTuziProviderDraft, DEFAULT_ESSE_CONCURRENCY, offeringFromTuziModel, SUBROUTER_PROVIDER_PRESETS, TUZI_PROVIDER_PRESETS, tuziProviderPresetForDraft } from './provider-catalog';
 import { SelectMenu } from './select-menu';
 import type { BatchSnapshot, ManagedDesktopState as DesktopState, ImageMetadata, OfferingConfig, OfferingSummary, ProviderDraft, ProviderProfile, SavedImage, SaveProviderInput } from './types';
@@ -644,7 +645,7 @@ function JobCard(props: { asset: GalleryAsset; referenceImages: SavedImage[]; se
       {props.selected ? <span className="selected-check"><Check size={13} weight="bold" /></span> : null}
       {pending ? <span className="status-overlay"><span className="spinner" />{jobStageText(job)}</span> : null}
     </button>
-    <div className="card-meta"><span>{asset.kind === 'backup' ? '历史版本' : job.status === 'succeeded' ? asset.offering.displayName : statusText(job.status)}</span><div className="card-tools"><button title="任务详情" onClick={props.onDetails}><Info size={14} /></button>{image ? <button title="另存为" onClick={() => void window.esse.saveImage(image.id)}><DownloadSimple size={14} /></button> : null}</div></div>
+    <div className="card-meta"><span>{asset.kind === 'backup' ? asset.backup?.resultIndex ? '同次生成结果' : '历史版本' : job.status === 'succeeded' ? asset.offering.displayName : statusText(job.status)}</span><div className="card-tools"><button title="任务详情" onClick={props.onDetails}><Info size={14} /></button>{image ? <button title="另存为" onClick={() => void window.esse.saveImage(image.id)}><DownloadSimple size={14} /></button> : null}</div></div>
     {asset.kind === 'job' && job.status === 'failed' ? <div className="job-error"><p><span className="error-origin">{jobErrorOriginLabel(job, asset.offering.providerName)}</span>{job.error || '生成失败'}</p>{job.operation !== 'agent' ? <button onClick={() => void props.onRetry()}>重试</button> : <span>需由 Agent 重新发起</span>}</div> : null}
     {pending && peekPosition ? createPortal(<PendingTaskPeek id={peekId} prompt={asset.prompt} images={props.referenceImages} position={peekPosition} onPointerEnter={keepPeekOpen} onPointerLeave={closePeekSoon} />, document.body) : null}
   </article>;
@@ -684,7 +685,7 @@ function TaskDetailDialog({ asset, imagesById, onClose }: { asset: GalleryAsset;
   const references = asset.referenceImageIds.flatMap((id) => imagesById.get(id) ? [imagesById.get(id)!] : []);
   return <div className="task-detail-backdrop" role="presentation" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="task-detail-dialog" role="dialog" aria-modal="true" aria-label={`${asset.name}任务详情`}>
-      <header><div><span>{asset.kind === 'backup' ? '历史版本' : '任务详情'}</span><h2>{asset.name}</h2></div><button onClick={onClose} aria-label="关闭"><X size={17} /></button></header>
+      <header><div><span>{asset.kind === 'backup' ? asset.backup?.resultIndex ? '同次生成结果' : '历史版本' : '任务详情'}</span><h2>{asset.name}</h2></div><button onClick={onClose} aria-label="关闭"><X size={17} /></button></header>
       <div className="detail-summary">
         <div><span>状态</span><strong>{asset.kind === 'backup' ? '已保留' : jobStageText(job)}</strong></div>
         <div><span>模型</span><strong>{asset.offering.displayName}</strong></div>
@@ -883,9 +884,9 @@ function AdvancedProviderSettings(props: SettingsProps) {
   const [busyAction, setBusyAction] = useState<string>();
   const [models, setModels] = useState<string[]>([]);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const activePreset = tuziProviderPresetForDraft(draft) || SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.displayName === draft.displayName && entry.tierName === draft.tierName && entry.adapterId === draft.adapterId && entry.baseUrl.replace(/\/+$/, '') === draft.baseUrl.replace(/\/+$/, ''));
+  const activePreset = tuziProviderPresetForDraft(draft) || geminiProviderPresetForDraft(draft) || SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.displayName === draft.displayName && entry.tierName === draft.tierName && entry.adapterId === draft.adapterId && entry.baseUrl.replace(/\/+$/, '') === draft.baseUrl.replace(/\/+$/, ''));
   const configuredPresetIds = new Set(props.state.providers.flatMap((profile) => {
-    const preset = tuziProviderPresetForDraft(providerDraftFromProfile(profile));
+    const preset = tuziProviderPresetForDraft(providerDraftFromProfile(profile)) || geminiProviderPresetForDraft(providerDraftFromProfile(profile));
     return preset ? [preset.id] : [];
   }));
 
@@ -904,7 +905,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
   const startDraft = (choice: string) => {
     const preset = TUZI_PROVIDER_PRESETS.find((entry) => entry.id === choice);
     const subrouter = SUBROUTER_PROVIDER_PRESETS.find((entry) => entry.id === choice);
-    setDraft(preset ? createTuziProviderDraft(preset.id as 'tuzi-default' | 'tuzi-microsoft' | 'tuzi-codex') : subrouter ? createSubrouterProviderDraft('subrouter-default') : createCustomProviderDraft());
+    setDraft(choice === GEMINI_PROVIDER_PRESET.id ? createGeminiProviderDraft() : preset ? createTuziProviderDraft(preset.id as 'tuzi-default' | 'tuzi-microsoft' | 'tuzi-codex') : subrouter ? createSubrouterProviderDraft('subrouter-default') : createCustomProviderDraft());
     setModels([]);
     setConfirmDelete(false);
   };
@@ -937,7 +938,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
   const test = async () => {
     setBusyAction('test');
     try {
-      const result = await window.esse.testProvider({ baseUrl: draft.baseUrl, profileId: draft.id, apiKey: draft.apiKey || undefined });
+      const result = await window.esse.testProvider({ baseUrl: draft.baseUrl, profileId: draft.id, apiKey: draft.apiKey || undefined, adapterId: draft.adapterId });
       setModels(result.models);
       props.onNotice(`连接成功，发现 ${result.models.length} 个模型`);
     } catch (error) { props.onNotice(cleanError(error)); }
@@ -964,7 +965,7 @@ function AdvancedProviderSettings(props: SettingsProps) {
         align="end"
         leading={<Plus size={14} />}
         options={[
-          ...[...TUZI_PROVIDER_PRESETS, ...SUBROUTER_PROVIDER_PRESETS].map((preset) => ({
+          ...[...TUZI_PROVIDER_PRESETS, ...SUBROUTER_PROVIDER_PRESETS, GEMINI_PROVIDER_PRESET].map((preset) => ({
             value: preset.id,
             label: preset.label,
             disabled: configuredPresetIds.has(preset.id),
@@ -981,11 +982,12 @@ function AdvancedProviderSettings(props: SettingsProps) {
 
     <div className="provider-editor">
       <header><h1>{draft.displayName || '新建 Provider'}{draft.tierName ? ` · ${draft.tierName}` : ''}</h1><p>Provider、API 地址和模型均可在此编辑；保存后会立即加入 Esse 和 Agent 的可用模型列表。</p></header>
+      {activePreset?.id === 'google-gemini' ? <div className="preset-config-banner"><strong>Google Gemini · 官方</strong><span>接口与模型已填好，只需填写自己的 Google API Key。价格以 Google 实际账单为准。</span></div> : null}
       <section className="provider-form-section"><h2>连接</h2><div className="form-grid">
         <Field label="服务商名称"><input value={draft.displayName} onChange={(event) => setDraft({ ...draft, displayName: event.target.value })} /></Field>
         <Field label="档位名称"><input value={draft.tierName} onChange={(event) => setDraft({ ...draft, tierName: event.target.value })} /></Field>
         <Field label="API 地址" wide><input value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} /></Field>
-        <SelectField label="接口格式"><SelectMenu value={draft.adapterId} ariaLabel="选择接口格式" options={[{ value: 'tuzi-json-images', label: '兼容 JSON Images' }, { value: 'openai-images', label: 'OpenAI Images' }]} onChange={(value) => setDraft({ ...draft, adapterId: value as ProviderDraft['adapterId'] })} /></SelectField>
+        <SelectField label="接口格式"><SelectMenu value={draft.adapterId} ariaLabel="选择接口格式" options={[{ value: 'tuzi-json-images', label: '兼容 JSON Images' }, { value: 'openai-images', label: 'OpenAI Images' }, { value: 'gemini-native-images', label: 'Google Gemini 原生' }]} onChange={(value) => setDraft({ ...draft, adapterId: value as ProviderDraft['adapterId'] })} /></SelectField>
         <Field label="并发数"><input type="number" min="1" step="1" value={draft.concurrency} onChange={(event) => setDraft({ ...draft, concurrency: Number(event.target.value) })} /></Field>
         <Field label="API Key" wide hint={draft.hasApiKey ? '留空保留现有密钥' : '只保存在当前系统用户的安全存储中'}><div className="secret-input"><input type="password" autoComplete="off" placeholder={draft.hasApiKey ? '•••••••• 已安全保存' : '粘贴 API Key'} value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} /><button type="button" onClick={() => void test()} disabled={Boolean(busyAction) || !draft.baseUrl || (!draft.hasApiKey && !draft.apiKey.trim())}>{busyAction === 'test' ? '测试中…' : '测试连接'}</button></div></Field>
       </div></section>
@@ -1045,7 +1047,7 @@ function requiredConcurrency(value: number): number {
 }
 
 function adapterDisplayName(adapterId: ProviderDraft['adapterId']): string {
-  return adapterId === 'tuzi-json-images' ? '兼容 JSON Images' : 'OpenAI Images';
+  return adapterId === 'gemini-native-images' ? 'Google Gemini 原生' : adapterId === 'tuzi-json-images' ? '兼容 JSON Images' : 'OpenAI Images';
 }
 
 function ImageContextMenu(props: { batchId: string; imageId: string; x: number; y: number; selected: boolean; onToggle: () => void; onClose: () => void; onNotice: (message: string) => void; onDelete: () => Promise<void> }) {
