@@ -40,7 +40,8 @@
         "scripts/prepare-private-release-notes.mjs",
         "scripts/prepare-private-release-notes.test.mjs",
         ".github/release-notes/v1.1.0-beta.8.md",
-        ".github/release-notes/v1.1.0-beta.9.md"
+        ".github/release-notes/v1.1.0-beta.9.md",
+        ".github/release-notes/v1.1.0-beta.11.md"
       ]
     },
     {
