@@ -91,7 +91,9 @@ After installation, the user opens Esse and completes setup inside its settings 
 3. Copy the Agent setup prompt from Esse, paste it into the Agent, and send it so the Agent can preserve existing MCP entries and add Esse.
 4. Start a new Agent task and say `用 Esse 生成图片`.
 
-Never request the API Key in chat or put it in an Agent configuration file. The MCP configuration contains only a local loopback endpoint and per-install pairing token. Once Esse accepts Provider work in the background, the Agent should return control immediately and should not poll or copy output back unless the user explicitly asks.
+Never request the API Key in chat or put it in an Agent configuration file. The MCP configuration contains only a local loopback endpoint and per-install pairing token.
+
+A submit-only request may end after Esse durably accepts the background work. If the original task or an active persistent Goal already authorizes tracking, image verification or bounded rework, the Agent continues within the original scope, budget and attempt limit without a new user message. Background acceptance is not final image or task acceptance. Actual client Plan mode permits only planning and non-mutating exploration that improves the plan. Uncertain submissions or charges require read-only reconciliation, never automatic resubmission. Retrieve only results authorized by the task.
 
 ## Update behavior
 
