@@ -29,7 +29,7 @@ Codex 应先阅读公开上游的 [`INSTALL.md`](https://github.com/renoir1220/e
 
 从本仓库的 GitHub Releases 下载指定版本的 `esse-macos-arm64-*.dmg`（Windows 安装包仅保留历史版本），校验后安装并打开 Esse。在 Esse 的设置页：
 
-1. 使用 Esse 服务时，在首次引导中填写 Esse Key。使用自己的 Google API Key 时，选择引导页“高级设置” → Provider“添加” → “Google Gemini · 官方”，填写并保存 Google API Key；无需填写 Esse Key。详见 [Google Gemini 配置](docs/google-gemini-provider.md)。
+1. 使用 Esse 服务时，在首次引导中填写 Esse Key。使用自己的项目 API Key 时，从引导页打开“高级设置” → Provider“添加”，选择“OpenAI · 官方”或“Google Gemini · 官方”，在设置中填入并保存 Key。OpenAI 会从绑定 API 组织的有效赠送额度优先抵扣生图和改图用量。[OpenAI 额度说明](https://developers.openai.com/api/docs/guides/chatgpt-api-credits) · [Google Gemini 配置](docs/google-gemini-provider.md)
 2. 选择默认模型；高级用户也可以在“高级配置”中编辑预置兔子 Provider、禁用或新增模型，或添加其他兼容 Provider。
 3. 复制 Agent 配置提示词，粘贴到 WorkBuddy 或其他 Agent 后直接发送。
 

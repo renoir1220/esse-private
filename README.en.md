@@ -27,7 +27,7 @@ You can also download the matching Plugin ZIP from [GitHub Releases](https://git
 
 Download the requested `esse-macos-arm64-*.dmg` from [downstream GitHub Releases](https://github.com/renoir1220/esse-private/releases), verify it against `sidecar-latest.json` or `checksums.txt`, and open Esse after installation. In Esse settings:
 
-1. For the managed Esse service, enter an Esse Key in the first-run guide. To use your own Google API key, open Advanced settings in the guide, then Provider → Add → Google Gemini · Official, and save your Google key; no Esse Key is required. See [Google Gemini configuration](docs/google-gemini-provider.md).
+1. For the managed Esse service, enter an Esse Key in the first-run guide. To use your own key, open Advanced settings → Provider → Add, choose **OpenAI · 官方** or **Google Gemini · 官方**, and save the key in settings. OpenAI applies active promotional API credits in the linked organization to generation and edit usage first. [OpenAI credits](https://developers.openai.com/api/docs/guides/chatgpt-api-credits) · [Google Gemini configuration](docs/google-gemini-provider.md)
 2. Select a default model; advanced users can edit the preconfigured Tuzi Provider, disable or add models, or add another compatible Provider under Advanced settings.
 3. Copy the Agent setup prompt, paste it into WorkBuddy or another Agent, and send it directly.
 
