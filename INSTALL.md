@@ -86,7 +86,7 @@ Open the checksum-verified `.dmg`, drag `Esse.app` into Applications, and open E
 
 After installation, the user opens Esse and completes setup inside its settings page:
 
-1. For the managed Esse service, paste the Esse Key into the first-run guide and wait for the connection test to pass. For your own Google API key, open Advanced settings from the guide, then Provider → Add → Google Gemini · Official, enter the Google key and save; no Esse Key is required. Connection testing only reads the model list.
+1. For the managed Esse service, enter the Esse Key in the first-run guide. To configure your own key, open Advanced settings from the guide, then Provider → Add, choose **OpenAI · 官方** or **Google Gemini · 官方**, enter the relevant key and save. To use claimed ChatGPT credits with OpenAI, use a project API key from the linked API organization. The connection test lists models. [OpenAI API credits](https://developers.openai.com/api/docs/guides/chatgpt-api-credits)
 2. Save a default image model. Advanced users may add a compatible Provider under Advanced settings.
 3. Copy the Agent setup prompt from Esse, paste it into the Agent, and send it so the Agent can preserve existing MCP entries and add Esse.
 4. Start a new Agent task and say `用 Esse 生成图片`.
